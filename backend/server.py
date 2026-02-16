@@ -579,20 +579,93 @@ async def create_campaign(request: Request):
         name=body.get("name"),
         subject=body.get("subject"),
         body=body.get("body"),
+        html_body=body.get("html_body"),
         segment=body.get("segment"),
         created_by=admin.user_id
     )
     
     campaign_dict = campaign.model_dump()
     campaign_dict["created_at"] = campaign_dict["created_at"].isoformat()
+    if campaign_dict.get("scheduled_at"):
+        campaign_dict["scheduled_at"] = campaign_dict["scheduled_at"].isoformat()
     await db.email_campaigns.insert_one(campaign_dict)
+    
+    await log_activity(admin.user_id, "create_campaign", {"campaign_id": campaign.campaign_id})
     
     return {"campaign_id": campaign.campaign_id, "message": "Campaign created"}
 
+@campaigns_router.put("/{campaign_id}")
+async def update_campaign(campaign_id: str, request: Request):
+    """Update an existing campaign"""
+    admin = await require_admin(request)
+    body = await request.json()
+    
+    campaign = await db.email_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    if campaign.get("status") == "sent":
+        raise HTTPException(status_code=400, detail="Cannot update a sent campaign")
+    
+    update_fields = {}
+    for field in ["name", "subject", "body", "html_body", "segment"]:
+        if field in body:
+            update_fields[field] = body[field]
+    
+    if update_fields:
+        await db.email_campaigns.update_one(
+            {"campaign_id": campaign_id},
+            {"$set": update_fields}
+        )
+    
+    return {"message": "Campaign updated"}
+
+@campaigns_router.delete("/{campaign_id}")
+async def delete_campaign(campaign_id: str, request: Request):
+    """Delete a campaign (draft only)"""
+    admin = await require_admin(request)
+    
+    campaign = await db.email_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    if campaign.get("status") == "sent":
+        raise HTTPException(status_code=400, detail="Cannot delete a sent campaign")
+    
+    await db.email_campaigns.delete_one({"campaign_id": campaign_id})
+    await log_activity(admin.user_id, "delete_campaign", {"campaign_id": campaign_id})
+    
+    return {"message": "Campaign deleted"}
+
+async def send_email_via_resend(recipient_email: str, recipient_name: str, subject: str, html_content: str) -> dict:
+    """Send a single email via Resend API"""
+    if not resend.api_key:
+        logger.warning("Resend API key not configured, email not sent")
+        return {"status": "skipped", "reason": "Resend not configured"}
+    
+    # Personalize content
+    personalized_html = html_content.replace("{{name}}", recipient_name or "Valued Customer")
+    
+    params = {
+        "from": SENDER_EMAIL,
+        "to": [recipient_email],
+        "subject": subject,
+        "html": personalized_html
+    }
+    
+    try:
+        email = await asyncio.to_thread(resend.Emails.send, params)
+        return {"status": "sent", "email_id": email.get("id")}
+    except Exception as e:
+        logger.error(f"Failed to send email to {recipient_email}: {str(e)}")
+        return {"status": "failed", "error": str(e)}
+
 @campaigns_router.post("/{campaign_id}/send")
 async def send_campaign(campaign_id: str, request: Request):
-    """Send an email campaign to its segment"""
+    """Send an email campaign to its segment via Resend"""
     admin = await require_admin(request)
+    body = await request.json() if request.headers.get("content-length", "0") != "0" else {}
+    test_mode = body.get("test_mode", False)
     
     campaign = await db.email_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
     if not campaign:
@@ -604,43 +677,95 @@ async def send_campaign(campaign_id: str, request: Request):
         "subscribers": {"subscription_tier": {"$in": ["connoisseur", "pro_collector", "collectors_advisory"]}},
         "free_users": {"subscription_tier": None, "purchased_stories": {"$size": 0}},
         "one_time_buyers": {"purchased_stories": {"$exists": True, "$ne": []}, "subscription_tier": None},
+        "advisory_members": {"subscription_tier": "collectors_advisory"},
         "all_users": {}
     }
     
     query = segment_queries.get(campaign["segment"], {})
-    recipients = await db.users.find(query, {"email": 1, "name": 1}).to_list(10000)
+    recipients = await db.users.find(query, {"_id": 0, "email": 1, "name": 1}).to_list(10000)
     
-    # In production, this would integrate with email service (SendGrid, etc.)
-    # For now, we'll log the campaign send
-    await db.email_campaigns.update_one(
-        {"campaign_id": campaign_id},
-        {"$set": {
-            "status": "sent",
-            "sent_at": datetime.now(timezone.utc).isoformat(),
-            "recipients_count": len(recipients)
-        }}
-    )
+    # In test mode, only send to admin
+    if test_mode:
+        recipients = [{"email": admin.email, "name": admin.name}]
     
-    # Log each email send (for tracking)
+    # Prepare email content
+    html_content = campaign.get("html_body") or f"<html><body><p>{campaign.get('body', '')}</p></body></html>"
+    subject = campaign.get("subject", "Message from Emaira.Art")
+    
+    sent_count = 0
+    failed_count = 0
+    
     for recipient in recipients:
+        result = await send_email_via_resend(
+            recipient["email"],
+            recipient.get("name", ""),
+            subject,
+            html_content
+        )
+        
+        # Log each email send
         await db.email_sends.insert_one({
             "send_id": f"send_{uuid.uuid4().hex[:12]}",
             "campaign_id": campaign_id,
             "email": recipient["email"],
-            "status": "sent",
+            "status": result["status"],
+            "email_id": result.get("email_id"),
+            "error": result.get("error"),
             "sent_at": datetime.now(timezone.utc).isoformat()
         })
+        
+        if result["status"] == "sent":
+            sent_count += 1
+        else:
+            failed_count += 1
+    
+    # Update campaign status
+    if not test_mode:
+        await db.email_campaigns.update_one(
+            {"campaign_id": campaign_id},
+            {"$set": {
+                "status": "sent",
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "recipients_count": sent_count
+            }}
+        )
     
     await log_activity(admin.user_id, "send_campaign", {
         "campaign_id": campaign_id,
-        "recipients_count": len(recipients)
+        "recipients_count": sent_count,
+        "test_mode": test_mode
     })
     
     return {
-        "message": "Campaign sent",
-        "recipients_count": len(recipients),
+        "message": "Test email sent" if test_mode else "Campaign sent",
+        "sent_count": sent_count,
+        "failed_count": failed_count,
         "campaign_id": campaign_id
     }
+
+@campaigns_router.post("/send-single")
+async def send_single_email(request: Request):
+    """Send a single email (for testing or transactional emails)"""
+    admin = await require_admin(request)
+    body = await request.json()
+    
+    email_request = EmailRequest(
+        recipient_email=body.get("recipient_email"),
+        subject=body.get("subject"),
+        html_content=body.get("html_content")
+    )
+    
+    result = await send_email_via_resend(
+        email_request.recipient_email,
+        "",
+        email_request.subject,
+        email_request.html_content
+    )
+    
+    if result["status"] == "sent":
+        return {"message": "Email sent successfully", "email_id": result.get("email_id")}
+    else:
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {result.get('error')}")
 
 @campaigns_router.get("/{campaign_id}/stats")
 async def get_campaign_stats(campaign_id: str, request: Request):
@@ -652,6 +777,7 @@ async def get_campaign_stats(campaign_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Campaign not found")
     
     sends = await db.email_sends.count_documents({"campaign_id": campaign_id})
+    sent_success = await db.email_sends.count_documents({"campaign_id": campaign_id, "status": "sent"})
     opens = await db.email_sends.count_documents({"campaign_id": campaign_id, "opened": True})
     clicks = await db.email_sends.count_documents({"campaign_id": campaign_id, "clicked": True})
     
