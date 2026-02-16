@@ -115,28 +115,45 @@ class EmairaAPITester:
             return False
 
     def test_get_stories(self):
-        """Test getting all stories"""
+        """Test getting all stories - should return 20 stories with narrative and forensic content"""
         try:
-            response = requests.get(f"{self.api_url}/stories/?limit=20", timeout=10)
+            response = requests.get(f"{self.api_url}/stories/?limit=50", timeout=10)
             success = response.status_code == 200
             data = response.json() if success else {}
             
-            if success and isinstance(data, list) and len(data) > 0:
+            if success and isinstance(data, list) and len(data) >= 20:
                 print(f"   Found {len(data)} stories")
                 story = data[0]
-                required_fields = ['story_id', 'title', 'artwork_id', 'price_narrative', 'price_full']
+                required_fields = ['story_id', 'title', 'artwork_id', 'price_narrative', 'price_full', 'narrative_content', 'forensic_content']
                 has_required = all(field in story for field in required_fields)
+                
+                # Check narrative content structure (should have 5 scenes)
+                narrative_content = story.get('narrative_content', [])
+                forensic_content = story.get('forensic_content', {})
+                
                 if not has_required:
                     success = False
-                    self.log_result("Get Stories", False, error_msg="Missing required story fields")
+                    self.log_result("Get 20 Stories with Narrative & Forensic", False, error_msg="Missing required story fields")
+                elif len(data) < 20:
+                    success = False
+                    self.log_result("Get 20 Stories with Narrative & Forensic", False, error_msg=f"Expected 20 stories, got {len(data)}")
+                elif len(narrative_content) < 5:
+                    success = False
+                    self.log_result("Get 20 Stories with Narrative & Forensic", False, error_msg=f"Expected 5 narrative scenes, got {len(narrative_content)}")
                 else:
-                    self.log_result("Get Stories", True, {"count": len(data), "sample": story})
+                    self.log_result("Get 20 Stories with Narrative & Forensic", True, {
+                        "count": len(data), 
+                        "sample_title": story.get('title'),
+                        "narrative_scenes": len(narrative_content),
+                        "has_forensic_content": bool(forensic_content)
+                    })
             else:
-                self.log_result("Get Stories", False, error_msg="No stories returned or invalid format")
+                error_msg = "No stories returned" if not data else f"Expected 20+ stories, got {len(data)}"
+                self.log_result("Get 20 Stories with Narrative & Forensic", False, error_msg=error_msg)
                 
             return success
         except Exception as e:
-            self.log_result("Get Stories", False, error_msg=str(e))
+            self.log_result("Get 20 Stories with Narrative & Forensic", False, error_msg=str(e))
             return False
 
     def test_get_subscription_tiers(self):
