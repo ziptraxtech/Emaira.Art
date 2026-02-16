@@ -2902,6 +2902,268 @@ async def seed_data():
             },
             "is_featured": True,
             "story_id": "story_physical_impossibility"
+        },
+        # MODERN & CONTEMPORARY ART ADDITIONS
+        {
+            "artwork_id": "art_warhol_marilyn",
+            "title": "Shot Sage Blue Marilyn",
+            "artist": "Andy Warhol",
+            "year": "1964",
+            "period": "Pop Art",
+            "movement": "Pop Art",
+            "medium": "Silkscreen ink and acrylic on linen",
+            "dimensions": "101.6 cm × 101.6 cm",
+            "location": "Private Collection",
+            "image_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=400",
+            "description": "Iconic Pop Art portrait sold for $195 million in 2022, the most expensive American artwork ever sold.",
+            "provenance": [
+                {"year": "1964", "event": "Created as part of Marilyn series"},
+                {"year": "1964", "event": "Shot by Dorothy Podber at The Factory"},
+                {"year": "2022", "event": "Sold at Christie's for $195 million"}
+            ],
+            "forensic_data": {
+                "pigments": ["Acrylic paint", "Silkscreen ink", "Commercial pigments"],
+                "technique": "Silkscreen printing on primed linen",
+                "signature_markers": "Offset registration, intentional imperfections",
+                "canvas_info": "Primed linen canvas, machine-stretched"
+            },
+            "is_featured": True,
+            "story_id": "story_warhol_marilyn"
+        },
+        {
+            "artwork_id": "art_basquiat_skull",
+            "title": "Untitled (Skull)",
+            "artist": "Jean-Michel Basquiat",
+            "year": "1981",
+            "period": "Neo-Expressionism",
+            "movement": "Neo-Expressionism",
+            "medium": "Acrylic and oilstick on canvas",
+            "dimensions": "205.7 cm × 175.9 cm",
+            "location": "Private Collection",
+            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "description": "Powerful skull painting sold for $110.5 million in 2017.",
+            "provenance": [
+                {"year": "1981", "event": "Created in New York"},
+                {"year": "2017", "event": "Sold at Sotheby's for $110.5 million"}
+            ],
+            "forensic_data": {
+                "pigments": ["Acrylic paint", "Oilstick", "Spray paint"],
+                "technique": "Gestural brushwork, text incorporation, raw energy",
+                "signature_markers": "Crown motif, anatomical references, street art influence",
+                "canvas_info": "Unprimed canvas, heavy impasto"
+            },
+            "is_featured": True,
+            "story_id": "story_basquiat_skull"
+        },
+        {
+            "artwork_id": "art_hockney_splash",
+            "title": "A Bigger Splash",
+            "artist": "David Hockney",
+            "year": "1967",
+            "period": "Pop Art",
+            "movement": "British Pop Art",
+            "medium": "Acrylic on canvas",
+            "dimensions": "242.5 cm × 243.9 cm",
+            "location": "Tate Modern, London",
+            "image_url": "https://images.unsplash.com/photo-1571115764595-644a1f56a55c?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1571115764595-644a1f56a55c?w=400",
+            "description": "Iconic California pool painting capturing a single moment of splash.",
+            "provenance": [
+                {"year": "1967", "event": "Created in Los Angeles"},
+                {"year": "1981", "event": "Acquired by Tate"}
+            ],
+            "forensic_data": {
+                "pigments": ["Acrylic paint", "Flat application"],
+                "technique": "Hard-edge painting, flat color fields, two-week splash detail",
+                "signature_markers": "California light, geometric architecture",
+                "canvas_info": "Stretched canvas, smooth acrylic surface"
+            },
+            "is_featured": True,
+            "story_id": "story_hockney_splash"
+        },
+        {
+            "artwork_id": "art_kusama_infinity",
+            "title": "Infinity Mirrored Room",
+            "artist": "Yayoi Kusama",
+            "year": "1965-present",
+            "period": "Contemporary",
+            "movement": "Minimalism/Pop Art",
+            "medium": "Mixed media installation",
+            "dimensions": "Variable",
+            "location": "Multiple Museums Worldwide",
+            "image_url": "https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=400",
+            "description": "Immersive installation creating infinite reflections, exploring themes of obsession and infinity.",
+            "provenance": [
+                {"year": "1965", "event": "First Infinity Room created"},
+                {"year": "2017", "event": "Global exhibition tour begins"}
+            ],
+            "forensic_data": {
+                "pigments": ["LED lights", "Mirrors", "Varied materials"],
+                "technique": "Immersive environment, infinite reflection",
+                "signature_markers": "Polka dots, cosmic infinity, psychological depth",
+                "canvas_info": "Room-scale installation, precise engineering"
+            },
+            "is_featured": True,
+            "story_id": "story_kusama_infinity"
+        },
+        {
+            "artwork_id": "art_kaws_companion",
+            "title": "COMPANION (Resting Place)",
+            "artist": "KAWS",
+            "year": "2013",
+            "period": "Contemporary",
+            "movement": "Street Art/Pop Surrealism",
+            "medium": "Fiberglass and bronze",
+            "dimensions": "Variable editions",
+            "location": "Various Collections",
+            "image_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=400",
+            "description": "Iconic cartoon-inspired figure exploring themes of isolation and companionship.",
+            "provenance": [
+                {"year": "2013", "event": "Created as part of ongoing COMPANION series"},
+                {"year": "2019", "event": "Major museum retrospective"}
+            ],
+            "forensic_data": {
+                "pigments": ["Industrial paint", "Resin coating"],
+                "technique": "3D modeling, industrial fabrication",
+                "signature_markers": "X eyes, cartoonish proportions, emotional resonance",
+                "canvas_info": "Fiberglass or bronze, factory-produced"
+            },
+            "is_featured": True,
+            "story_id": "story_kaws_companion"
+        },
+        {
+            "artwork_id": "art_ai_weiwei_seeds",
+            "title": "Sunflower Seeds",
+            "artist": "Ai Weiwei",
+            "year": "2010",
+            "period": "Contemporary",
+            "movement": "Conceptual Art",
+            "medium": "Hand-painted porcelain",
+            "dimensions": "100 million seeds",
+            "location": "Tate Modern (original installation)",
+            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "description": "Installation of 100 million hand-painted porcelain sunflower seeds exploring mass production and individuality.",
+            "provenance": [
+                {"year": "2010", "event": "Created with 1,600 artisans in Jingdezhen"},
+                {"year": "2010", "event": "Unveiled at Tate Modern Turbine Hall"}
+            ],
+            "forensic_data": {
+                "pigments": ["Traditional ceramic glazes", "Hand-applied paint"],
+                "technique": "Traditional porcelain craft, mass collaboration",
+                "signature_markers": "Political commentary, artisan collaboration",
+                "canvas_info": "Porcelain, hand-crafted, each unique"
+            },
+            "is_featured": True,
+            "story_id": "story_ai_weiwei_seeds"
+        },
+        {
+            "artwork_id": "art_richter_abstract",
+            "title": "Abstraktes Bild",
+            "artist": "Gerhard Richter",
+            "year": "1986",
+            "period": "Contemporary",
+            "movement": "Abstract Art",
+            "medium": "Oil on canvas",
+            "dimensions": "300 cm × 250 cm",
+            "location": "Private Collection",
+            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "description": "Masterwork of squeegee abstraction sold for over $46 million.",
+            "provenance": [
+                {"year": "1986", "event": "Created in Cologne studio"},
+                {"year": "2015", "event": "Sold at Sotheby's for $46.3 million"}
+            ],
+            "forensic_data": {
+                "pigments": ["Oil paints", "Multiple layered colors"],
+                "technique": "Squeegee technique, layered scraping",
+                "signature_markers": "Horizontal drag marks, color blending",
+                "canvas_info": "Large-scale canvas, multiple paint layers"
+            },
+            "is_featured": True,
+            "story_id": "story_richter_abstract"
+        },
+        {
+            "artwork_id": "art_bacon_triptych",
+            "title": "Three Studies of Lucian Freud",
+            "artist": "Francis Bacon",
+            "year": "1969",
+            "period": "Modern",
+            "movement": "Figurative Expressionism",
+            "medium": "Oil on canvas",
+            "dimensions": "198 cm × 147.5 cm (each panel)",
+            "location": "Private Collection",
+            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "description": "Powerful triptych portrait sold for $142.4 million in 2013.",
+            "provenance": [
+                {"year": "1969", "event": "Created depicting friend Lucian Freud"},
+                {"year": "2013", "event": "Sold at Christie's for $142.4 million"}
+            ],
+            "forensic_data": {
+                "pigments": ["Oil paint", "Spray paint accents"],
+                "technique": "Distorted figuration, violent brushwork",
+                "signature_markers": "Caged figures, raw emotion, spatial distortion",
+                "canvas_info": "Primed canvas, textured application"
+            },
+            "is_featured": True,
+            "story_id": "story_bacon_triptych"
+        },
+        {
+            "artwork_id": "art_bourgeois_spider",
+            "title": "Maman",
+            "artist": "Louise Bourgeois",
+            "year": "1999",
+            "period": "Contemporary",
+            "movement": "Sculpture",
+            "medium": "Bronze, stainless steel, marble",
+            "dimensions": "927 cm × 891 cm × 1024 cm",
+            "location": "Multiple casts worldwide",
+            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "description": "Monumental spider sculpture exploring themes of motherhood and protection.",
+            "provenance": [
+                {"year": "1999", "event": "First cast created"},
+                {"year": "2000", "event": "Unveiled at Tate Modern inauguration"}
+            ],
+            "forensic_data": {
+                "pigments": ["Patinated bronze", "Polished steel"],
+                "technique": "Large-scale bronze casting",
+                "signature_markers": "Maternal imagery, arachnid form, emotional scale",
+                "canvas_info": "Bronze, steel, marble eggs in sac"
+            },
+            "is_featured": True,
+            "story_id": "story_bourgeois_spider"
+        },
+        {
+            "artwork_id": "art_kapoor_bean",
+            "title": "Cloud Gate",
+            "artist": "Anish Kapoor",
+            "year": "2006",
+            "period": "Contemporary",
+            "movement": "Public Art",
+            "medium": "Stainless steel",
+            "dimensions": "10 m × 20 m × 13 m",
+            "location": "Millennium Park, Chicago",
+            "image_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400",
+            "description": "Iconic 'Bean' sculpture reflecting Chicago skyline, one of the most visited artworks in America.",
+            "provenance": [
+                {"year": "2004", "event": "Construction begins"},
+                {"year": "2006", "event": "Officially dedicated in Millennium Park"}
+            ],
+            "forensic_data": {
+                "pigments": ["Mirror-polished stainless steel"],
+                "technique": "Seamless welding, perfect polish",
+                "signature_markers": "Reflective void, spatial distortion",
+                "canvas_info": "168 steel plates, no visible seams"
+            },
+            "is_featured": True,
+            "story_id": "story_kapoor_bean"
         }
     ]
     
