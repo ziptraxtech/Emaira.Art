@@ -52,6 +52,50 @@ museum_router = APIRouter(prefix="/museums", tags=["Museum Partnerships"])
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# ===================== ADMIN ROLE DEFINITIONS =====================
+
+ADMIN_ROLES = {
+    "super_admin": {
+        "name": "Super Admin",
+        "permissions": [
+            "manage_users", "manage_admins", "manage_artworks", "manage_stories",
+            "manage_campaigns", "manage_museums", "view_analytics", "manage_settings",
+            "manage_payments", "manage_subscriptions", "delete_content"
+        ],
+        "description": "Full system access with all permissions"
+    },
+    "content_curator": {
+        "name": "Content Curator",
+        "permissions": [
+            "manage_artworks", "manage_stories", "view_analytics", "manage_museums"
+        ],
+        "description": "Can manage artwork and story content, view analytics"
+    },
+    "marketing_admin": {
+        "name": "Marketing Admin",
+        "permissions": [
+            "manage_campaigns", "view_analytics", "manage_users"
+        ],
+        "description": "Can manage email campaigns and view user data"
+    },
+    "support_admin": {
+        "name": "Support Admin",
+        "permissions": [
+            "manage_users", "view_analytics"
+        ],
+        "description": "Can view and assist users, access support tools"
+    }
+}
+
+def has_permission(role: str, permission: str) -> bool:
+    """Check if a role has a specific permission"""
+    if role == "admin":  # Legacy admin has all permissions
+        return True
+    role_def = ADMIN_ROLES.get(role)
+    if not role_def:
+        return False
+    return permission in role_def.get("permissions", [])
+
 # ===================== MODELS =====================
 
 class User(BaseModel):
@@ -60,7 +104,8 @@ class User(BaseModel):
     email: str
     name: str
     picture: Optional[str] = None
-    role: str = "user"  # user, admin, curator
+    role: str = "user"  # user, admin, super_admin, content_curator, marketing_admin, support_admin
+    admin_permissions: List[str] = []  # Specific permissions for custom roles
     subscription_tier: Optional[str] = None
     subscription_expires: Optional[datetime] = None
     purchased_stories: List[str] = []
