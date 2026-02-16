@@ -24,6 +24,13 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# Resend configuration
+resend.api_key = os.environ.get('RESEND_API_KEY')
+SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
+
+# Met Museum API configuration
+MET_MUSEUM_API_BASE = os.environ.get('MET_MUSEUM_API_BASE', 'https://collectionapi.metmuseum.org/public/collection/v1')
+
 # Create the main app
 app = FastAPI(title="Emaira.Art API")
 
