@@ -411,6 +411,14 @@ class EmairaAPITester:
         self.test_get_stories()
         self.test_individual_story()
         self.test_get_subscription_tiers()
+        
+        # CRM API tests
+        self.test_crm_analytics()
+        self.test_crm_segments()
+        self.test_crm_users()
+        self.test_crm_activities()
+        
+        # Auth tests
         self.test_auth_endpoints()
         
         # Summary
