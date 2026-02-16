@@ -50,8 +50,11 @@ Build "Emaira.Art: The VR Storyteller plus AI Art Forensics" - a high-end VR Sto
 - [x] User dashboard with stories & knowledge tracking
 - [x] Payment success/failure handling
 - [x] Google OAuth callback handling
-- [x] Dark luxury Vogue theme (Bodoni Moda, Manrope, Space Mono fonts)
-- [x] Gold (#D4AF37) and Cyan (#00F0FF) accent colors
+- [x] **NEW** About Us page with team, mission, and values sections
+- [x] **NEW** Our Technology page with AI forensics features deep-dive
+- [x] **NEW** Events page with calendar, upcoming events, and past recordings
+- [x] **UPDATED** Light Luxury Vogue theme (Bodoni Moda, Manrope, Space Mono fonts)
+- [x] **UPDATED** Ivory (#FAFAF8), Gold (#B8962F) and Navy (#1A365D) color palette
 
 ## Prioritized Backlog
 
