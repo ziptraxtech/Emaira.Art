@@ -160,6 +160,7 @@ class EmailCampaign(BaseModel):
     name: str
     subject: str
     body: str
+    html_body: Optional[str] = None  # Rich HTML email content
     segment: str  # high_value, subscribers, free_users, etc.
     status: str = "draft"  # draft, scheduled, sent
     scheduled_at: Optional[datetime] = None
@@ -169,6 +170,15 @@ class EmailCampaign(BaseModel):
     clicked_count: int = 0
     created_by: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class EmailRequest(BaseModel):
+    recipient_email: EmailStr
+    subject: str
+    html_content: str
+    
+class BulkEmailRequest(BaseModel):
+    campaign_id: str
+    test_mode: bool = False  # If true, only send to admin email
 
 class MuseumPartner(BaseModel):
     partner_id: str = Field(default_factory=lambda: f"museum_{uuid.uuid4().hex[:12]}")
