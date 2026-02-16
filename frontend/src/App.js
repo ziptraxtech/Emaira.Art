@@ -127,6 +127,14 @@ function AppRouter() {
         }
       />
       <Route
+        path="/crm"
+        element={
+          <ProtectedRoute>
+            <CRMDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/experience/:storyId"
         element={
           <ProtectedRoute>
