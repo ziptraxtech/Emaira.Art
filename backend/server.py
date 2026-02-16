@@ -462,10 +462,21 @@ async def logout(request: Request, response: Response):
 
 # ===================== ADMIN ROUTES =====================
 
-@admin_router.post("/make-admin/{user_id}")
-async def make_user_admin(user_id: str, request: Request):
-    """Promote a user to admin role"""
-    admin = await require_admin(request)
+@admin_router.get("/roles")
+async def get_admin_roles(request: Request):
+    """Get all available admin roles and their permissions"""
+    await require_admin(request)
+    return {"roles": ADMIN_ROLES}
+
+@admin_router.post("/assign-role/{user_id}")
+async def assign_admin_role(user_id: str, request: Request):
+    """Assign a specific admin role to a user (Super Admin only)"""
+    admin = await require_super_admin(request)
+    body = await request.json()
+    role = body.get("role")
+    
+    if role not in ADMIN_ROLES and role not in ["admin", "user"]:
+        raise HTTPException(status_code=400, detail=f"Invalid role. Available: {list(ADMIN_ROLES.keys())}")
     
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     if not user:
@@ -473,36 +484,80 @@ async def make_user_admin(user_id: str, request: Request):
     
     await db.users.update_one(
         {"user_id": user_id},
-        {"$set": {"role": "admin"}}
+        {"$set": {"role": role}}
+    )
+    
+    await log_activity(admin.user_id, "admin_action", {"action": "assign_role", "target_user": user_id, "role": role})
+    
+    return {"message": f"User {user_id} assigned role: {role}"}
+
+@admin_router.post("/make-admin/{user_id}")
+async def make_user_admin(user_id: str, request: Request):
+    """Promote a user to super_admin role"""
+    admin = await require_super_admin(request)
+    
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"role": "super_admin"}}
     )
     
     await log_activity(admin.user_id, "admin_action", {"action": "promote_admin", "target_user": user_id})
     
-    return {"message": f"User {user_id} promoted to admin"}
+    return {"message": f"User {user_id} promoted to super_admin"}
 
 @admin_router.post("/make-curator/{user_id}")
 async def make_user_curator(user_id: str, request: Request):
-    """Make a user a curator"""
+    """Make a user a content curator"""
     admin = await require_admin(request)
     
     await db.users.update_one(
         {"user_id": user_id},
-        {"$set": {"role": "curator"}}
+        {"$set": {"role": "content_curator"}}
     )
     
-    return {"message": f"User {user_id} is now a curator"}
+    await log_activity(admin.user_id, "admin_action", {"action": "make_curator", "target_user": user_id})
+    
+    return {"message": f"User {user_id} is now a content curator"}
+
+@admin_router.post("/revoke-admin/{user_id}")
+async def revoke_admin_access(user_id: str, request: Request):
+    """Revoke admin access from a user (Super Admin only)"""
+    admin = await require_super_admin(request)
+    
+    if user_id == admin.user_id:
+        raise HTTPException(status_code=400, detail="Cannot revoke your own admin access")
+    
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"role": "user", "admin_permissions": []}}
+    )
+    
+    await log_activity(admin.user_id, "admin_action", {"action": "revoke_admin", "target_user": user_id})
+    
+    return {"message": f"Admin access revoked for user {user_id}"}
 
 @admin_router.get("/users/admins")
 async def list_admins(request: Request):
-    """List all admin and curator users"""
+    """List all admin users with their roles"""
     await require_admin(request)
     
+    admin_roles = ["admin", "super_admin", "content_curator", "marketing_admin", "support_admin", "curator"]
     admins = await db.users.find(
-        {"role": {"$in": ["admin", "curator"]}},
+        {"role": {"$in": admin_roles}},
         {"_id": 0}
     ).to_list(100)
     
-    return {"admins": admins}
+    # Add role descriptions
+    for admin in admins:
+        role = admin.get("role")
+        if role in ADMIN_ROLES:
+            admin["role_info"] = ADMIN_ROLES[role]
+    
+    return {"admins": admins, "available_roles": ADMIN_ROLES}
 
 # ===================== EMAIL CAMPAIGNS ROUTES =====================
 
