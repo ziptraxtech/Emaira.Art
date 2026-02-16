@@ -142,9 +142,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <div className="App min-h-screen bg-[#050505]">
+        <div className="App min-h-screen bg-[#FAFAF8]">
           <AppRouter />
-          <Toaster position="bottom-right" theme="dark" />
+          <Toaster position="bottom-right" theme="light" />
         </div>
       </AuthProvider>
     </BrowserRouter>
