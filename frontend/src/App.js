@@ -113,6 +113,9 @@ function AppRouter() {
       <Route path="/gallery" element={<Gallery />} />
       <Route path="/story/:storyId" element={<StoryDetail />} />
       <Route path="/pricing" element={<Pricing />} />
+      <Route path="/about" element={<AboutUs />} />
+      <Route path="/technology" element={<OurTechnology />} />
+      <Route path="/events" element={<Events />} />
       <Route path="/payment/success" element={<PaymentSuccess />} />
       <Route
         path="/dashboard"
