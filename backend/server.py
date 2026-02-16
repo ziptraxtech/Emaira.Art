@@ -1187,6 +1187,95 @@ async def get_user_submitted_artworks(request: Request):
     
     return {"artworks": artworks}
 
+@artworks_router.post("/admin/upload-image")
+async def admin_upload_artwork_image(request: Request):
+    """Admin endpoint to upload artwork with base64 image"""
+    admin = await require_admin(request)
+    body = await request.json()
+    
+    # Get base64 image data
+    image_data = body.get("image_data")  # base64 encoded image
+    
+    if image_data:
+        # Store image in database
+        image_id = f"img_{uuid.uuid4().hex[:12]}"
+        mime_type = body.get("mime_type", "image/jpeg")
+        
+        await db.uploaded_images.insert_one({
+            "image_id": image_id,
+            "data": image_data,
+            "mime_type": mime_type,
+            "uploaded_by": admin.user_id,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Generate URL for the image
+        image_url = f"/api/artworks/image/{image_id}"
+    else:
+        image_url = body.get("image_url", "")
+    
+    artwork = Artwork(
+        title=body.get("title"),
+        artist=body.get("artist"),
+        year=body.get("year"),
+        period=body.get("period", "Unknown Period"),
+        movement=body.get("movement"),
+        medium=body.get("medium", "Unknown"),
+        dimensions=body.get("dimensions", "Unknown"),
+        location=body.get("location", "Emaira Collection"),
+        image_url=image_url,
+        thumbnail_url=image_url,
+        description=body.get("description", ""),
+        is_featured=body.get("is_featured", False),
+        is_user_submitted=False,
+        provenance=body.get("provenance", []),
+        forensic_data=body.get("forensic_data")
+    )
+    
+    artwork_dict = artwork.model_dump()
+    artwork_dict["created_at"] = artwork_dict["created_at"].isoformat()
+    await db.artworks.insert_one(artwork_dict)
+    
+    # Optionally create a story
+    if body.get("create_story", True):
+        story = {
+            "story_id": f"story_{artwork.artwork_id.replace('art_', '')}",
+            "artwork_id": artwork.artwork_id,
+            "title": f"The Story of {artwork.title}",
+            "description": f"Explore {artwork.title} by {artwork.artist}",
+            "duration_minutes": 4,
+            "price_narrative": 9.99,
+            "price_full": 49.00,
+            "is_featured": artwork.is_featured,
+            "narrative_content": body.get("narrative_content", []),
+            "forensic_content": body.get("forensic_content", {"status": "pending_analysis"}),
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.stories.insert_one(story)
+        
+        await db.artworks.update_one(
+            {"artwork_id": artwork.artwork_id},
+            {"$set": {"story_id": story["story_id"]}}
+        )
+    
+    await log_activity(admin.user_id, "admin_upload_artwork", {"artwork_id": artwork.artwork_id})
+    
+    return {
+        "message": "Artwork uploaded successfully",
+        "artwork_id": artwork.artwork_id,
+        "image_url": image_url
+    }
+
+@artworks_router.get("/image/{image_id}")
+async def get_uploaded_image(image_id: str):
+    """Serve an uploaded artwork image"""
+    image_doc = await db.uploaded_images.find_one({"image_id": image_id}, {"_id": 0})
+    if not image_doc:
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    image_bytes = base64.b64decode(image_doc["data"])
+    return Response(content=image_bytes, media_type=image_doc.get("mime_type", "image/jpeg"))
+
 # ===================== ADVISORY SESSIONS ROUTES =====================
 
 @api_router.post("/advisory/book")
