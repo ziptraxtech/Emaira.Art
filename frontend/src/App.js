@@ -16,6 +16,7 @@ import PaymentSuccess from "@/pages/PaymentSuccess";
 import AboutUs from "@/pages/AboutUs";
 import OurTechnology from "@/pages/OurTechnology";
 import Events from "@/pages/Events";
+import CRMDashboard from "@/pages/CRMDashboard";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
