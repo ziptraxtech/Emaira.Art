@@ -278,6 +278,117 @@ class EmairaAPITester:
             self.log_result("Server Health", False, error_msg=str(e))
             return False
 
+    def test_crm_analytics(self):
+        """Test CRM analytics endpoint"""
+        try:
+            response = requests.get(f"{self.api_url}/crm/analytics", timeout=10)
+            success = response.status_code == 200
+            data = response.json() if success else {}
+            
+            if success:
+                required_fields = ['total_users', 'subscription_breakdown', 'revenue', 'active_users_7d']
+                has_required = all(field in data for field in required_fields)
+                if has_required:
+                    self.log_result("CRM Analytics", True, {
+                        "total_users": data.get('total_users', 0),
+                        "revenue": data.get('revenue', {}).get('total', 0),
+                        "active_users": data.get('active_users_7d', 0)
+                    })
+                else:
+                    success = False
+                    self.log_result("CRM Analytics", False, error_msg="Missing required analytics fields")
+            else:
+                self.log_result("CRM Analytics", False, error_msg=f"Status {response.status_code}")
+                
+            return success
+        except Exception as e:
+            self.log_result("CRM Analytics", False, error_msg=str(e))
+            return False
+
+    def test_crm_segments(self):
+        """Test CRM user segments endpoint"""
+        try:
+            response = requests.get(f"{self.api_url}/crm/segments", timeout=10)
+            success = response.status_code == 200
+            data = response.json() if success else {}
+            
+            if success and isinstance(data, dict):
+                expected_segments = ['high_value', 'subscribers', 'one_time_buyers', 'free_users', 'inactive_30d', 'forensics_enthusiasts']
+                has_segments = all(segment in data for segment in expected_segments)
+                if has_segments:
+                    self.log_result("CRM User Segments", True, {
+                        "total_segments": len(data),
+                        "high_value_users": data.get('high_value', 0),
+                        "subscribers": data.get('subscribers', 0)
+                    })
+                else:
+                    success = False
+                    missing = [s for s in expected_segments if s not in data]
+                    self.log_result("CRM User Segments", False, error_msg=f"Missing segments: {missing}")
+            else:
+                self.log_result("CRM User Segments", False, error_msg="Invalid response format")
+                
+            return success
+        except Exception as e:
+            self.log_result("CRM User Segments", False, error_msg=str(e))
+            return False
+
+    def test_crm_users(self):
+        """Test CRM users endpoint with pagination"""
+        try:
+            response = requests.get(f"{self.api_url}/crm/users?page=1&limit=10", timeout=10)
+            success = response.status_code == 200
+            data = response.json() if success else {}
+            
+            if success and isinstance(data, dict):
+                required_fields = ['users', 'total', 'page', 'limit', 'total_pages']
+                has_required = all(field in data for field in required_fields)
+                if has_required and isinstance(data['users'], list):
+                    self.log_result("CRM Paginated Users", True, {
+                        "total_users": data.get('total', 0),
+                        "returned_users": len(data.get('users', [])),
+                        "current_page": data.get('page', 0)
+                    })
+                else:
+                    success = False
+                    self.log_result("CRM Paginated Users", False, error_msg="Missing required pagination fields")
+            else:
+                self.log_result("CRM Paginated Users", False, error_msg=f"Status {response.status_code}")
+                
+            return success
+        except Exception as e:
+            self.log_result("CRM Paginated Users", False, error_msg=str(e))
+            return False
+
+    def test_crm_activities(self):
+        """Test CRM activities endpoint"""
+        try:
+            response = requests.get(f"{self.api_url}/crm/activities?limit=20", timeout=10)
+            success = response.status_code == 200
+            data = response.json() if success else {}
+            
+            if success and isinstance(data, dict):
+                required_fields = ['activities', 'total', 'page', 'limit']
+                has_required = all(field in data for field in required_fields)
+                if has_required and isinstance(data['activities'], list):
+                    activities = data['activities']
+                    activity_types = set(act.get('activity_type') for act in activities if act.get('activity_type'))
+                    self.log_result("CRM Activities Log", True, {
+                        "total_activities": data.get('total', 0),
+                        "returned_activities": len(activities),
+                        "activity_types": list(activity_types)
+                    })
+                else:
+                    success = False
+                    self.log_result("CRM Activities Log", False, error_msg="Missing required activity fields")
+            else:
+                self.log_result("CRM Activities Log", False, error_msg=f"Status {response.status_code}")
+                
+            return success
+        except Exception as e:
+            self.log_result("CRM Activities Log", False, error_msg=str(e))
+            return False
+
     def run_all_tests(self):
         """Run all API tests"""
         print("🔍 Starting Emaira.Art API Testing...")
