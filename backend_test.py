@@ -53,29 +53,47 @@ class EmairaAPITester:
             return False
 
     def test_get_artworks(self):
-        """Test getting all artworks"""
+        """Test getting all artworks - should return 20 masterpieces"""
         try:
-            response = requests.get(f"{self.api_url}/artworks/?limit=20", timeout=10)
+            response = requests.get(f"{self.api_url}/artworks/?limit=50", timeout=10)
             success = response.status_code == 200
             data = response.json() if success else {}
             
-            if success and isinstance(data, list) and len(data) > 0:
+            if success and isinstance(data, list) and len(data) >= 20:
                 print(f"   Found {len(data)} artworks")
-                # Check first artwork structure
+                # Check first artwork structure and forensic data
                 artwork = data[0]
-                required_fields = ['artwork_id', 'title', 'artist', 'year', 'period']
+                required_fields = ['artwork_id', 'title', 'artist', 'year', 'period', 'provenance', 'forensic_data']
                 has_required = all(field in artwork for field in required_fields)
+                
+                # Check forensic data structure
+                forensic_data = artwork.get('forensic_data', {})
+                forensic_fields = ['pigments', 'signature_markers', 'canvas_info']
+                has_forensic = all(field in forensic_data for field in forensic_fields)
+                
                 if not has_required:
                     success = False
-                    self.log_result("Get Artworks", False, error_msg="Missing required artwork fields")
+                    self.log_result("Get 20 Artworks with Forensic Data", False, error_msg="Missing required artwork fields")
+                elif not has_forensic:
+                    success = False
+                    self.log_result("Get 20 Artworks with Forensic Data", False, error_msg="Missing forensic data fields")
+                elif len(data) < 20:
+                    success = False
+                    self.log_result("Get 20 Artworks with Forensic Data", False, error_msg=f"Expected 20 artworks, got {len(data)}")
                 else:
-                    self.log_result("Get Artworks", True, {"count": len(data), "sample": artwork})
+                    self.log_result("Get 20 Artworks with Forensic Data", True, {
+                        "count": len(data), 
+                        "sample_title": artwork.get('title'),
+                        "has_forensic_data": bool(forensic_data),
+                        "provenance_entries": len(artwork.get('provenance', []))
+                    })
             else:
-                self.log_result("Get Artworks", False, error_msg="No artworks returned or invalid format")
+                error_msg = "No artworks returned" if not data else f"Expected 20+ artworks, got {len(data)}"
+                self.log_result("Get 20 Artworks with Forensic Data", False, error_msg=error_msg)
                 
             return success
         except Exception as e:
-            self.log_result("Get Artworks", False, error_msg=str(e))
+            self.log_result("Get 20 Artworks with Forensic Data", False, error_msg=str(e))
             return False
 
     def test_get_featured_artworks(self):
