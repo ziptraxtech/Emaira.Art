@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import httpx
 import base64
+import json
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -34,6 +35,9 @@ payments_router = APIRouter(prefix="/payments", tags=["Payments"])
 subscriptions_router = APIRouter(prefix="/subscriptions", tags=["Subscriptions"])
 dashboard_router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 crm_router = APIRouter(prefix="/crm", tags=["CRM"])
+admin_router = APIRouter(prefix="/admin", tags=["Admin"])
+campaigns_router = APIRouter(prefix="/campaigns", tags=["Email Campaigns"])
+museum_router = APIRouter(prefix="/museums", tags=["Museum Partnerships"])
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -47,6 +51,7 @@ class User(BaseModel):
     email: str
     name: str
     picture: Optional[str] = None
+    role: str = "user"  # user, admin, curator
     subscription_tier: Optional[str] = None
     subscription_expires: Optional[datetime] = None
     purchased_stories: List[str] = []
@@ -55,14 +60,7 @@ class User(BaseModel):
     notes: Optional[str] = None
     total_spent: float = 0.0
     last_active: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class UserSession(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    session_id: str
-    user_id: str
-    session_token: str
-    expires_at: datetime
+    advisory_sessions_remaining: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Artwork(BaseModel):
@@ -72,6 +70,7 @@ class Artwork(BaseModel):
     artist: str
     year: str
     period: str
+    movement: Optional[str] = None
     medium: str
     dimensions: str
     location: str
@@ -82,6 +81,9 @@ class Artwork(BaseModel):
     forensic_data: Optional[Dict[str, Any]] = None
     story_id: Optional[str] = None
     is_featured: bool = False
+    is_user_submitted: bool = False
+    submitted_by: Optional[str] = None
+    museum_partner_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Story(BaseModel):
@@ -97,6 +99,44 @@ class Story(BaseModel):
     price_full: float = 49.00
     is_featured: bool = False
     preview_url: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class EmailCampaign(BaseModel):
+    campaign_id: str = Field(default_factory=lambda: f"camp_{uuid.uuid4().hex[:12]}")
+    name: str
+    subject: str
+    body: str
+    segment: str  # high_value, subscribers, free_users, etc.
+    status: str = "draft"  # draft, scheduled, sent
+    scheduled_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    recipients_count: int = 0
+    opened_count: int = 0
+    clicked_count: int = 0
+    created_by: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class MuseumPartner(BaseModel):
+    partner_id: str = Field(default_factory=lambda: f"museum_{uuid.uuid4().hex[:12]}")
+    name: str
+    location: str
+    country: str
+    website: str
+    api_endpoint: Optional[str] = None
+    artworks_count: int = 0
+    partnership_tier: str = "standard"  # standard, premium, exclusive
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class AdvisorySession(BaseModel):
+    session_id: str = Field(default_factory=lambda: f"session_{uuid.uuid4().hex[:12]}")
+    user_id: str
+    advisor_name: str
+    scheduled_at: datetime
+    duration_minutes: int = 60
+    topic: str
+    status: str = "scheduled"  # scheduled, completed, cancelled
+    notes: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PaymentTransaction(BaseModel):
@@ -125,22 +165,7 @@ class SubscriptionTier(BaseModel):
     period: str
     features: List[str]
 
-# CRM Models
-class UserActivity(BaseModel):
-    activity_id: str = Field(default_factory=lambda: f"act_{uuid.uuid4().hex[:12]}")
-    user_id: str
-    activity_type: str  # login, view_artwork, purchase, analysis, etc.
-    details: Dict[str, Any] = {}
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class CRMNote(BaseModel):
-    note_id: str = Field(default_factory=lambda: f"note_{uuid.uuid4().hex[:12]}")
-    user_id: str
-    content: str
-    created_by: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-# Subscription tiers configuration
+# Subscription tiers configuration (updated with Collector's Advisory)
 SUBSCRIPTION_TIERS = {
     "short_story": SubscriptionTier(
         tier_id="short_story",
@@ -169,6 +194,21 @@ SUBSCRIPTION_TIERS = {
         price=999.00,
         period="year",
         features=["All Connoisseur features", "Request custom Forensic Stories", "Priority support", "Exclusive previews"]
+    ),
+    "collectors_advisory": SubscriptionTier(
+        tier_id="collectors_advisory",
+        name="Collector's Advisory",
+        price=2499.00,
+        period="year",
+        features=[
+            "All Pro Collector features",
+            "Monthly 1-on-1 video consultation with art historian",
+            "Early access to authentication reports",
+            "VIP gallery event invitations",
+            "Personal art portfolio analysis",
+            "Direct curator hotline",
+            "12 advisory sessions per year"
+        ]
     )
 }
 
@@ -208,8 +248,15 @@ async def require_auth(request: Request) -> User:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
 
+async def require_admin(request: Request) -> User:
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if user.role not in ["admin", "curator"]:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
 async def log_activity(user_id: str, activity_type: str, details: Dict[str, Any] = {}):
-    """Log user activity for CRM tracking"""
     activity = {
         "activity_id": f"act_{uuid.uuid4().hex[:12]}",
         "user_id": user_id,
@@ -218,8 +265,6 @@ async def log_activity(user_id: str, activity_type: str, details: Dict[str, Any]
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.user_activities.insert_one(activity)
-    
-    # Update user's last_active
     await db.users.update_one(
         {"user_id": user_id},
         {"$set": {"last_active": datetime.now(timezone.utc).isoformat()}}
@@ -256,6 +301,9 @@ async def create_session(request: Request, response: Response):
     
     existing_user = await db.users.find_one({"email": email}, {"_id": 0})
     
+    # Admin emails list (can be configured)
+    admin_emails = ["admin@emaira.art"]
+    
     if existing_user:
         user_id = existing_user["user_id"]
         await db.users.update_one(
@@ -264,17 +312,18 @@ async def create_session(request: Request, response: Response):
         )
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
+        role = "admin" if email in admin_emails else "user"
         new_user = User(
             user_id=user_id,
             email=email,
             name=name,
-            picture=picture
+            picture=picture,
+            role=role
         )
         user_doc = new_user.model_dump()
         user_doc["created_at"] = user_doc["created_at"].isoformat()
         await db.users.insert_one(user_doc)
     
-    # Log login activity
     await log_activity(user_id, "login", {"method": "google_oauth"})
     
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
@@ -316,19 +365,432 @@ async def logout(request: Request, response: Response):
     response.delete_cookie(key="session_token", path="/", secure=True, samesite="none")
     return {"message": "Logged out successfully"}
 
+# ===================== ADMIN ROUTES =====================
+
+@admin_router.post("/make-admin/{user_id}")
+async def make_user_admin(user_id: str, request: Request):
+    """Promote a user to admin role"""
+    admin = await require_admin(request)
+    
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"role": "admin"}}
+    )
+    
+    await log_activity(admin.user_id, "admin_action", {"action": "promote_admin", "target_user": user_id})
+    
+    return {"message": f"User {user_id} promoted to admin"}
+
+@admin_router.post("/make-curator/{user_id}")
+async def make_user_curator(user_id: str, request: Request):
+    """Make a user a curator"""
+    admin = await require_admin(request)
+    
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"role": "curator"}}
+    )
+    
+    return {"message": f"User {user_id} is now a curator"}
+
+@admin_router.get("/users/admins")
+async def list_admins(request: Request):
+    """List all admin and curator users"""
+    await require_admin(request)
+    
+    admins = await db.users.find(
+        {"role": {"$in": ["admin", "curator"]}},
+        {"_id": 0}
+    ).to_list(100)
+    
+    return {"admins": admins}
+
+# ===================== EMAIL CAMPAIGNS ROUTES =====================
+
+@campaigns_router.get("/")
+async def list_campaigns(request: Request):
+    """List all email campaigns"""
+    await require_admin(request)
+    
+    campaigns = await db.email_campaigns.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"campaigns": campaigns}
+
+@campaigns_router.post("/")
+async def create_campaign(request: Request):
+    """Create a new email campaign"""
+    admin = await require_admin(request)
+    body = await request.json()
+    
+    campaign = EmailCampaign(
+        name=body.get("name"),
+        subject=body.get("subject"),
+        body=body.get("body"),
+        segment=body.get("segment"),
+        created_by=admin.user_id
+    )
+    
+    campaign_dict = campaign.model_dump()
+    campaign_dict["created_at"] = campaign_dict["created_at"].isoformat()
+    await db.email_campaigns.insert_one(campaign_dict)
+    
+    return {"campaign_id": campaign.campaign_id, "message": "Campaign created"}
+
+@campaigns_router.post("/{campaign_id}/send")
+async def send_campaign(campaign_id: str, request: Request):
+    """Send an email campaign to its segment"""
+    admin = await require_admin(request)
+    
+    campaign = await db.email_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Get users in segment
+    segment_queries = {
+        "high_value": {"total_spent": {"$gte": 200}},
+        "subscribers": {"subscription_tier": {"$in": ["connoisseur", "pro_collector", "collectors_advisory"]}},
+        "free_users": {"subscription_tier": None, "purchased_stories": {"$size": 0}},
+        "one_time_buyers": {"purchased_stories": {"$exists": True, "$ne": []}, "subscription_tier": None},
+        "all_users": {}
+    }
+    
+    query = segment_queries.get(campaign["segment"], {})
+    recipients = await db.users.find(query, {"email": 1, "name": 1}).to_list(10000)
+    
+    # In production, this would integrate with email service (SendGrid, etc.)
+    # For now, we'll log the campaign send
+    await db.email_campaigns.update_one(
+        {"campaign_id": campaign_id},
+        {"$set": {
+            "status": "sent",
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "recipients_count": len(recipients)
+        }}
+    )
+    
+    # Log each email send (for tracking)
+    for recipient in recipients:
+        await db.email_sends.insert_one({
+            "send_id": f"send_{uuid.uuid4().hex[:12]}",
+            "campaign_id": campaign_id,
+            "email": recipient["email"],
+            "status": "sent",
+            "sent_at": datetime.now(timezone.utc).isoformat()
+        })
+    
+    await log_activity(admin.user_id, "send_campaign", {
+        "campaign_id": campaign_id,
+        "recipients_count": len(recipients)
+    })
+    
+    return {
+        "message": "Campaign sent",
+        "recipients_count": len(recipients),
+        "campaign_id": campaign_id
+    }
+
+@campaigns_router.get("/{campaign_id}/stats")
+async def get_campaign_stats(campaign_id: str, request: Request):
+    """Get campaign performance statistics"""
+    await require_admin(request)
+    
+    campaign = await db.email_campaigns.find_one({"campaign_id": campaign_id}, {"_id": 0})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    sends = await db.email_sends.count_documents({"campaign_id": campaign_id})
+    opens = await db.email_sends.count_documents({"campaign_id": campaign_id, "opened": True})
+    clicks = await db.email_sends.count_documents({"campaign_id": campaign_id, "clicked": True})
+    
+    return {
+        "campaign": campaign,
+        "stats": {
+            "sent": sends,
+            "opened": opens,
+            "clicked": clicks,
+            "open_rate": (opens / sends * 100) if sends > 0 else 0,
+            "click_rate": (clicks / sends * 100) if sends > 0 else 0
+        }
+    }
+
+@campaigns_router.get("/templates")
+async def get_campaign_templates():
+    """Get email campaign templates"""
+    templates = [
+        {
+            "id": "welcome",
+            "name": "Welcome Email",
+            "subject": "Welcome to Emaira.Art - Your Art Journey Begins",
+            "body": "Dear {{name}},\n\nWelcome to Emaira.Art! You've joined an exclusive community of art connoisseurs who see beyond the canvas.\n\nStart your journey with our featured masterpieces and discover the hidden DNA within each artwork.\n\nBest regards,\nThe Emaira Team"
+        },
+        {
+            "id": "new_artwork",
+            "name": "New Artwork Alert",
+            "subject": "New Masterpiece Added: {{artwork_title}}",
+            "body": "Dear {{name}},\n\nWe're excited to announce a new addition to our gallery: {{artwork_title}} by {{artist}}.\n\nBe among the first to experience its story and uncover its authentication DNA.\n\nExplore now at Emaira.Art"
+        },
+        {
+            "id": "advisory_reminder",
+            "name": "Advisory Session Reminder",
+            "subject": "Your Collector's Advisory Session is Coming Up",
+            "body": "Dear {{name}},\n\nThis is a reminder that your personal advisory session with our art historian is scheduled for {{session_date}}.\n\nPrepare any questions about your collection or artworks you're considering.\n\nSee you soon!"
+        },
+        {
+            "id": "subscription_expiring",
+            "name": "Subscription Expiring",
+            "subject": "Your Emaira.Art Subscription Expires Soon",
+            "body": "Dear {{name}},\n\nYour {{subscription_tier}} subscription will expire in 7 days.\n\nRenew now to continue enjoying unlimited access to our masterpiece collection and forensic analysis tools.\n\nDon't lose your learned forensic markers!"
+        }
+    ]
+    return {"templates": templates}
+
+# ===================== MUSEUM PARTNERSHIPS ROUTES =====================
+
+@museum_router.get("/")
+async def list_museum_partners():
+    """List all museum partners"""
+    partners = await db.museum_partners.find({"is_active": True}, {"_id": 0}).to_list(100)
+    return {"partners": partners}
+
+@museum_router.get("/{partner_id}")
+async def get_museum_partner(partner_id: str):
+    """Get museum partner details"""
+    partner = await db.museum_partners.find_one({"partner_id": partner_id}, {"_id": 0})
+    if not partner:
+        raise HTTPException(status_code=404, detail="Partner not found")
+    
+    # Get artworks from this partner
+    artworks = await db.artworks.find(
+        {"museum_partner_id": partner_id},
+        {"_id": 0}
+    ).to_list(100)
+    
+    return {"partner": partner, "artworks": artworks}
+
+@museum_router.post("/")
+async def add_museum_partner(request: Request):
+    """Add a new museum partner (admin only)"""
+    await require_admin(request)
+    body = await request.json()
+    
+    partner = MuseumPartner(
+        name=body.get("name"),
+        location=body.get("location"),
+        country=body.get("country"),
+        website=body.get("website"),
+        api_endpoint=body.get("api_endpoint"),
+        partnership_tier=body.get("partnership_tier", "standard")
+    )
+    
+    partner_dict = partner.model_dump()
+    partner_dict["created_at"] = partner_dict["created_at"].isoformat()
+    await db.museum_partners.insert_one(partner_dict)
+    
+    return {"partner_id": partner.partner_id, "message": "Museum partner added"}
+
+@museum_router.post("/{partner_id}/sync")
+async def sync_museum_artworks(partner_id: str, request: Request):
+    """Sync artworks from museum API (simulated)"""
+    await require_admin(request)
+    
+    partner = await db.museum_partners.find_one({"partner_id": partner_id}, {"_id": 0})
+    if not partner:
+        raise HTTPException(status_code=404, detail="Partner not found")
+    
+    # In production, this would call the museum's API
+    # For now, return simulated sync result
+    return {
+        "message": "Sync completed",
+        "partner_id": partner_id,
+        "artworks_synced": 0,
+        "note": "Museum API integration ready for production"
+    }
+
+# ===================== ARTWORK UPLOAD ROUTES =====================
+
+@artworks_router.post("/upload")
+async def upload_artwork(request: Request):
+    """Upload a custom artwork for analysis (Pro Collector+ only)"""
+    user = await require_auth(request)
+    
+    if user.subscription_tier not in ["pro_collector", "collectors_advisory"]:
+        raise HTTPException(status_code=403, detail="Pro Collector or Collector's Advisory subscription required")
+    
+    body = await request.json()
+    
+    artwork = Artwork(
+        title=body.get("title"),
+        artist=body.get("artist"),
+        year=body.get("year"),
+        period=body.get("period", "User Submitted"),
+        movement=body.get("movement"),
+        medium=body.get("medium"),
+        dimensions=body.get("dimensions"),
+        location=body.get("location", "Private Collection"),
+        image_url=body.get("image_url"),
+        thumbnail_url=body.get("image_url"),
+        description=body.get("description"),
+        is_user_submitted=True,
+        submitted_by=user.user_id,
+        is_featured=False
+    )
+    
+    artwork_dict = artwork.model_dump()
+    artwork_dict["created_at"] = artwork_dict["created_at"].isoformat()
+    await db.artworks.insert_one(artwork_dict)
+    
+    # Create a story template for the uploaded artwork
+    story = Story(
+        artwork_id=artwork.artwork_id,
+        title=f"Analysis of {artwork.title}",
+        description=f"Custom forensic analysis of {artwork.title} by {artwork.artist}",
+        duration_minutes=5,
+        narrative_content=[],
+        forensic_content={
+            "status": "pending_analysis",
+            "submitted_by": user.user_id,
+            "submitted_at": datetime.now(timezone.utc).isoformat()
+        }
+    )
+    
+    story_dict = story.model_dump()
+    story_dict["created_at"] = story_dict["created_at"].isoformat()
+    await db.stories.insert_one(story_dict)
+    
+    # Update artwork with story_id
+    await db.artworks.update_one(
+        {"artwork_id": artwork.artwork_id},
+        {"$set": {"story_id": story.story_id}}
+    )
+    
+    await log_activity(user.user_id, "upload_artwork", {"artwork_id": artwork.artwork_id})
+    
+    return {
+        "artwork_id": artwork.artwork_id,
+        "story_id": story.story_id,
+        "message": "Artwork uploaded successfully. Forensic analysis pending."
+    }
+
+@artworks_router.get("/user-submitted")
+async def get_user_submitted_artworks(request: Request):
+    """Get artworks submitted by the current user"""
+    user = await require_auth(request)
+    
+    artworks = await db.artworks.find(
+        {"submitted_by": user.user_id},
+        {"_id": 0}
+    ).to_list(100)
+    
+    return {"artworks": artworks}
+
+# ===================== ADVISORY SESSIONS ROUTES =====================
+
+@api_router.post("/advisory/book")
+async def book_advisory_session(request: Request):
+    """Book an advisory session (Collector's Advisory tier only)"""
+    user = await require_auth(request)
+    
+    if user.subscription_tier != "collectors_advisory":
+        raise HTTPException(status_code=403, detail="Collector's Advisory subscription required")
+    
+    if user.advisory_sessions_remaining <= 0:
+        raise HTTPException(status_code=400, detail="No advisory sessions remaining")
+    
+    body = await request.json()
+    
+    session = AdvisorySession(
+        user_id=user.user_id,
+        advisor_name=body.get("advisor_name", "Dr. Elena Vasquez"),
+        scheduled_at=datetime.fromisoformat(body.get("scheduled_at")),
+        topic=body.get("topic"),
+        duration_minutes=body.get("duration_minutes", 60)
+    )
+    
+    session_dict = session.model_dump()
+    session_dict["scheduled_at"] = session_dict["scheduled_at"].isoformat()
+    session_dict["created_at"] = session_dict["created_at"].isoformat()
+    await db.advisory_sessions.insert_one(session_dict)
+    
+    # Decrement remaining sessions
+    await db.users.update_one(
+        {"user_id": user.user_id},
+        {"$inc": {"advisory_sessions_remaining": -1}}
+    )
+    
+    await log_activity(user.user_id, "book_advisory", {"session_id": session.session_id})
+    
+    return {"session_id": session.session_id, "message": "Session booked successfully"}
+
+@api_router.get("/advisory/sessions")
+async def get_user_advisory_sessions(request: Request):
+    """Get user's advisory sessions"""
+    user = await require_auth(request)
+    
+    sessions = await db.advisory_sessions.find(
+        {"user_id": user.user_id},
+        {"_id": 0}
+    ).sort("scheduled_at", -1).to_list(50)
+    
+    return {
+        "sessions": sessions,
+        "remaining_sessions": user.advisory_sessions_remaining
+    }
+
+@api_router.get("/advisory/advisors")
+async def get_available_advisors():
+    """Get list of available art advisors"""
+    advisors = [
+        {
+            "id": "advisor_1",
+            "name": "Dr. Elena Vasquez",
+            "specialty": "Renaissance & Baroque",
+            "credentials": "Former Prado Museum Curator, 25+ years experience",
+            "availability": ["Monday", "Wednesday", "Friday"]
+        },
+        {
+            "id": "advisor_2",
+            "name": "Prof. Marcus Chen",
+            "specialty": "Modern & Contemporary Art",
+            "credentials": "MIT Art Authentication Lab Director",
+            "availability": ["Tuesday", "Thursday"]
+        },
+        {
+            "id": "advisor_3",
+            "name": "Dr. Isabelle Fontaine",
+            "specialty": "Impressionism & Post-Impressionism",
+            "credentials": "Orsay Museum Authentication Expert",
+            "availability": ["Monday", "Tuesday", "Saturday"]
+        },
+        {
+            "id": "advisor_4",
+            "name": "Dr. Raj Patel",
+            "specialty": "Asian & Eastern Art",
+            "credentials": "Christie's Senior Authentication Specialist",
+            "availability": ["Wednesday", "Friday", "Saturday"]
+        }
+    ]
+    return {"advisors": advisors}
+
 # ===================== CRM ROUTES =====================
 
 @crm_router.get("/users")
 async def get_crm_users(
+    request: Request,
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     search: Optional[str] = None,
     subscription: Optional[str] = None,
     tag: Optional[str] = None,
+    role: Optional[str] = None,
     sort_by: str = "created_at",
     sort_order: str = "desc"
 ):
-    """Get paginated list of users with filters"""
+    """Get paginated list of users with filters (admin only)"""
+    await require_admin(request)
+    
     query = {}
     
     if search:
@@ -342,6 +804,9 @@ async def get_crm_users(
     
     if tag:
         query["tags"] = tag
+    
+    if role:
+        query["role"] = role
     
     skip = (page - 1) * limit
     sort_direction = -1 if sort_order == "desc" else 1
@@ -358,31 +823,39 @@ async def get_crm_users(
     }
 
 @crm_router.get("/users/{user_id}")
-async def get_crm_user_detail(user_id: str):
-    """Get detailed user profile with activity history"""
+async def get_crm_user_detail(user_id: str, request: Request):
+    """Get detailed user profile with activity history (admin only)"""
+    await require_admin(request)
+    
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Get recent activities
     activities = await db.user_activities.find(
         {"user_id": user_id}, 
         {"_id": 0}
     ).sort("created_at", -1).limit(50).to_list(50)
     
-    # Get payment history
     payments = await db.payment_transactions.find(
         {"user_id": user_id},
         {"_id": 0}
     ).sort("created_at", -1).to_list(100)
     
-    # Get CRM notes
     notes = await db.crm_notes.find(
         {"user_id": user_id},
         {"_id": 0}
     ).sort("created_at", -1).to_list(50)
     
-    # Calculate stats
+    advisory_sessions = await db.advisory_sessions.find(
+        {"user_id": user_id},
+        {"_id": 0}
+    ).sort("scheduled_at", -1).to_list(20)
+    
+    uploaded_artworks = await db.artworks.find(
+        {"submitted_by": user_id},
+        {"_id": 0}
+    ).to_list(50)
+    
     total_spent = sum(p.get("amount", 0) for p in payments if p.get("payment_status") == "paid")
     total_purchases = len([p for p in payments if p.get("payment_status") == "paid"])
     
@@ -391,17 +864,21 @@ async def get_crm_user_detail(user_id: str):
         "activities": activities,
         "payments": payments,
         "notes": notes,
+        "advisory_sessions": advisory_sessions,
+        "uploaded_artworks": uploaded_artworks,
         "stats": {
             "total_spent": total_spent,
             "total_purchases": total_purchases,
             "forensic_markers_count": len(user.get("forensic_markers_learned", [])),
-            "purchased_stories_count": len(user.get("purchased_stories", []))
+            "purchased_stories_count": len(user.get("purchased_stories", [])),
+            "uploaded_artworks_count": len(uploaded_artworks)
         }
     }
 
 @crm_router.put("/users/{user_id}")
 async def update_crm_user(user_id: str, request: Request):
-    """Update user profile (tags, notes, etc.)"""
+    """Update user profile (admin only)"""
+    await require_admin(request)
     body = await request.json()
     
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
@@ -409,12 +886,10 @@ async def update_crm_user(user_id: str, request: Request):
         raise HTTPException(status_code=404, detail="User not found")
     
     update_fields = {}
-    if "tags" in body:
-        update_fields["tags"] = body["tags"]
-    if "notes" in body:
-        update_fields["notes"] = body["notes"]
-    if "subscription_tier" in body:
-        update_fields["subscription_tier"] = body["subscription_tier"]
+    allowed_fields = ["tags", "notes", "subscription_tier", "role", "advisory_sessions_remaining"]
+    for field in allowed_fields:
+        if field in body:
+            update_fields[field] = body[field]
     
     if update_fields:
         await db.users.update_one(
@@ -426,10 +901,10 @@ async def update_crm_user(user_id: str, request: Request):
 
 @crm_router.post("/users/{user_id}/notes")
 async def add_crm_note(user_id: str, request: Request):
-    """Add a CRM note to a user"""
+    """Add a CRM note to a user (admin only)"""
+    admin = await require_admin(request)
     body = await request.json()
     content = body.get("content")
-    created_by = body.get("created_by", "admin")
     
     if not content:
         raise HTTPException(status_code=400, detail="Note content required")
@@ -438,7 +913,7 @@ async def add_crm_note(user_id: str, request: Request):
         "note_id": f"note_{uuid.uuid4().hex[:12]}",
         "user_id": user_id,
         "content": content,
-        "created_by": created_by,
+        "created_by": admin.user_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.crm_notes.insert_one(note)
@@ -446,33 +921,36 @@ async def add_crm_note(user_id: str, request: Request):
     return {"message": "Note added", "note_id": note["note_id"]}
 
 @crm_router.get("/analytics")
-async def get_crm_analytics():
-    """Get CRM analytics dashboard data"""
-    # Total users
+async def get_crm_analytics(request: Request):
+    """Get CRM analytics dashboard data (admin only)"""
+    await require_admin(request)
+    
     total_users = await db.users.count_documents({})
     
-    # Users by subscription
     subscription_pipeline = [
         {"$group": {"_id": "$subscription_tier", "count": {"$sum": 1}}}
     ]
     subscription_stats = await db.users.aggregate(subscription_pipeline).to_list(10)
     
-    # Revenue stats
     revenue_pipeline = [
         {"$match": {"payment_status": "paid"}},
         {"$group": {"_id": None, "total": {"$sum": "$amount"}, "count": {"$sum": 1}}}
     ]
     revenue_stats = await db.payment_transactions.aggregate(revenue_pipeline).to_list(1)
     
-    # Recent signups (last 30 days)
     thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     recent_signups = await db.users.count_documents({"created_at": {"$gte": thirty_days_ago}})
     
-    # Active users (last 7 days)
     seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     active_users = await db.users.count_documents({"last_active": {"$gte": seven_days_ago}})
     
-    # Top artworks viewed
+    # Advisory tier stats
+    advisory_subscribers = await db.users.count_documents({"subscription_tier": "collectors_advisory"})
+    total_advisory_sessions = await db.advisory_sessions.count_documents({})
+    
+    # Uploaded artworks
+    uploaded_artworks = await db.artworks.count_documents({"is_user_submitted": True})
+    
     artwork_views = await db.user_activities.aggregate([
         {"$match": {"activity_type": "view_artwork"}},
         {"$group": {"_id": "$details.artwork_id", "views": {"$sum": 1}}},
@@ -489,17 +967,23 @@ async def get_crm_analytics():
         },
         "recent_signups_30d": recent_signups,
         "active_users_7d": active_users,
+        "advisory_subscribers": advisory_subscribers,
+        "total_advisory_sessions": total_advisory_sessions,
+        "uploaded_artworks": uploaded_artworks,
         "top_artworks": artwork_views
     }
 
 @crm_router.get("/activities")
 async def get_recent_activities(
+    request: Request,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     activity_type: Optional[str] = None,
     user_id: Optional[str] = None
 ):
-    """Get recent user activities"""
+    """Get recent user activities (admin only)"""
+    await require_admin(request)
+    
     query = {}
     if activity_type:
         query["activity_type"] = activity_type
@@ -518,24 +1002,31 @@ async def get_recent_activities(
     }
 
 @crm_router.get("/segments")
-async def get_user_segments():
-    """Get user segments for targeting"""
+async def get_user_segments(request: Request):
+    """Get user segments for targeting (admin only)"""
+    await require_admin(request)
+    
     segments = {
         "high_value": await db.users.count_documents({"total_spent": {"$gte": 200}}),
-        "subscribers": await db.users.count_documents({"subscription_tier": {"$in": ["connoisseur", "pro_collector"]}}),
+        "subscribers": await db.users.count_documents({"subscription_tier": {"$in": ["connoisseur", "pro_collector", "collectors_advisory"]}}),
+        "collectors_advisory": await db.users.count_documents({"subscription_tier": "collectors_advisory"}),
+        "pro_collectors": await db.users.count_documents({"subscription_tier": "pro_collector"}),
         "one_time_buyers": await db.users.count_documents({
             "purchased_stories": {"$exists": True, "$ne": []},
             "subscription_tier": None
         }),
         "free_users": await db.users.count_documents({
             "subscription_tier": None,
-            "purchased_stories": {"$size": 0}
+            "$or": [{"purchased_stories": {"$size": 0}}, {"purchased_stories": {"$exists": False}}]
         }),
         "inactive_30d": await db.users.count_documents({
             "last_active": {"$lt": (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()}
         }),
         "forensics_enthusiasts": await db.users.count_documents({
             "forensic_markers_learned.5": {"$exists": True}
+        }),
+        "artwork_uploaders": await db.users.count_documents({
+            "subscription_tier": {"$in": ["pro_collector", "collectors_advisory"]}
         })
     }
     return segments
@@ -543,10 +1034,29 @@ async def get_user_segments():
 # ===================== ARTWORKS ROUTES =====================
 
 @artworks_router.get("/", response_model=List[Dict[str, Any]])
-async def get_artworks(featured: bool = False, limit: int = 50):
-    query = {"is_featured": True} if featured else {}
+async def get_artworks(
+    featured: bool = False, 
+    limit: int = 50,
+    period: Optional[str] = None,
+    movement: Optional[str] = None
+):
+    query = {}
+    if featured:
+        query["is_featured"] = True
+    if period:
+        query["period"] = period
+    if movement:
+        query["movement"] = movement
+    
     artworks = await db.artworks.find(query, {"_id": 0}).limit(limit).to_list(limit)
     return artworks
+
+@artworks_router.get("/periods")
+async def get_artwork_periods():
+    """Get all available art periods"""
+    periods = await db.artworks.distinct("period")
+    movements = await db.artworks.distinct("movement")
+    return {"periods": periods, "movements": [m for m in movements if m]}
 
 @artworks_router.get("/{artwork_id}")
 async def get_artwork(artwork_id: str, request: Request):
@@ -554,7 +1064,6 @@ async def get_artwork(artwork_id: str, request: Request):
     if not artwork:
         raise HTTPException(status_code=404, detail="Artwork not found")
     
-    # Log view activity if user is logged in
     user = await get_current_user(request)
     if user:
         await log_activity(user.user_id, "view_artwork", {"artwork_id": artwork_id, "title": artwork.get("title")})
@@ -562,7 +1071,8 @@ async def get_artwork(artwork_id: str, request: Request):
     return artwork
 
 @artworks_router.post("/", response_model=Dict[str, Any])
-async def create_artwork(artwork: Artwork):
+async def create_artwork(artwork: Artwork, request: Request):
+    await require_admin(request)
     artwork_dict = artwork.model_dump()
     artwork_dict["created_at"] = artwork_dict["created_at"].isoformat()
     await db.artworks.insert_one(artwork_dict)
@@ -586,7 +1096,7 @@ async def get_story(story_id: str, request: Request):
     has_access = False
     
     if user:
-        if user.subscription_tier in ["connoisseur", "pro_collector"]:
+        if user.subscription_tier in ["connoisseur", "pro_collector", "collectors_advisory"]:
             has_access = True
         elif story_id in user.purchased_stories:
             has_access = True
@@ -609,7 +1119,8 @@ async def get_story(story_id: str, request: Request):
     return story
 
 @stories_router.post("/", response_model=Dict[str, Any])
-async def create_story(story: Story):
+async def create_story(story: Story, request: Request):
+    await require_admin(request)
     story_dict = story.model_dump()
     story_dict["created_at"] = story_dict["created_at"].isoformat()
     await db.stories.insert_one(story_dict)
@@ -621,7 +1132,7 @@ async def create_story(story: Story):
 async def analyze_artwork(analysis_request: ForensicAnalysisRequest, request: Request):
     user = await require_auth(request)
     
-    if user.subscription_tier not in ["deep_dive", "connoisseur", "pro_collector"]:
+    if user.subscription_tier not in ["deep_dive", "connoisseur", "pro_collector", "collectors_advisory"]:
         artwork = await db.artworks.find_one({"artwork_id": analysis_request.artwork_id}, {"_id": 0})
         if artwork and artwork.get("story_id"):
             purchased_stories = user.purchased_stories or []
@@ -670,7 +1181,6 @@ async def analyze_artwork(analysis_request: ForensicAnalysisRequest, request: Re
             }
         }
         
-        # Store learned forensic marker for user
         marker = {
             "artwork_id": analysis_request.artwork_id,
             "analysis_type": analysis_request.analysis_type,
@@ -681,7 +1191,6 @@ async def analyze_artwork(analysis_request: ForensicAnalysisRequest, request: Re
             {"$push": {"forensic_markers_learned": marker}}
         )
         
-        # Log activity
         await log_activity(user.user_id, "forensic_analysis", {
             "artwork_id": analysis_request.artwork_id,
             "analysis_type": analysis_request.analysis_type
@@ -713,9 +1222,9 @@ async def generate_forensic_visualization(analysis_request: ForensicAnalysisRequ
         chat.with_model("gemini", "gemini-3-pro-image-preview").with_params(modalities=["image", "text"])
         
         viz_prompts = {
-            "pigment": f"Create a scientific pigment analysis visualization overlay for a {artwork['period']} painting, showing color composition with labeled sections highlighting: vermillion, ultramarine, lead white, and organic dyes. Style: forensic analysis diagram with cyan highlights on dark background.",
-            "signature": f"Create an artistic signature authentication overlay visualization showing brushstroke analysis, pressure mapping, and comparative signature patterns. Style: high-tech forensic scan with gold and cyan accents on black background.",
-            "canvas": f"Create a canvas weave analysis visualization showing thread density mapping, material age patterns, and support structure. Style: scientific microscopy view with luminescent highlights on dark obsidian background."
+            "pigment": f"Create a scientific pigment analysis visualization overlay for a {artwork['period']} painting, showing color composition with labeled sections highlighting pigment types. Style: forensic analysis diagram.",
+            "signature": f"Create an artistic signature authentication overlay visualization showing brushstroke analysis and pressure mapping. Style: high-tech forensic scan.",
+            "canvas": f"Create a canvas weave analysis visualization showing thread density mapping and material patterns. Style: scientific microscopy view."
         }
         
         prompt = viz_prompts.get(analysis_request.analysis_type, viz_prompts["pigment"])
@@ -868,13 +1377,19 @@ async def get_stripe_payment_status(session_id: str, request: Request):
                 if metadata.get("type") == "subscription":
                     tier_id = metadata.get("tier_id")
                     expires = datetime.now(timezone.utc) + timedelta(days=365 if SUBSCRIPTION_TIERS[tier_id].period == "year" else 30)
+                    
+                    update_user = {
+                        "subscription_tier": tier_id,
+                        "subscription_expires": expires.isoformat()
+                    }
+                    
+                    # Grant advisory sessions for Collector's Advisory tier
+                    if tier_id == "collectors_advisory":
+                        update_user["advisory_sessions_remaining"] = 12
+                    
                     await db.users.update_one(
                         {"user_id": user_id},
-                        {"$set": {
-                            "subscription_tier": tier_id,
-                            "subscription_expires": expires.isoformat()
-                        },
-                        "$inc": {"total_spent": float(txn.get("amount", 0))}}
+                        {"$set": update_user, "$inc": {"total_spent": float(txn.get("amount", 0))}}
                     )
                 elif metadata.get("type") == "story_purchase":
                     story_id = metadata.get("story_id")
@@ -885,7 +1400,6 @@ async def get_stripe_payment_status(session_id: str, request: Request):
                          "$inc": {"total_spent": float(txn.get("amount", 0))}}
                     )
                 
-                # Log purchase activity
                 await log_activity(user_id, "purchase", {
                     "amount": txn.get("amount"),
                     "type": metadata.get("type"),
@@ -1020,14 +1534,19 @@ async def get_dashboard(request: Request):
         if tier:
             subscription_info = {
                 "tier": tier.model_dump(),
-                "expires": user.subscription_expires.isoformat() if user.subscription_expires else None
+                "expires": user.subscription_expires.isoformat() if user.subscription_expires else None,
+                "advisory_sessions_remaining": user.advisory_sessions_remaining if user.subscription_tier == "collectors_advisory" else 0
             }
+    
+    # Get uploaded artworks count
+    uploaded_count = await db.artworks.count_documents({"submitted_by": user.user_id})
     
     return {
         "user": user.model_dump(),
         "purchased_stories": purchased_stories,
         "forensic_markers_learned": markers_count,
         "subscription": subscription_info,
+        "uploaded_artworks_count": uploaded_count,
         "recent_activity": user.forensic_markers_learned[-5:] if user.forensic_markers_learned else []
     }
 
@@ -1054,16 +1573,17 @@ async def get_knowledge_dashboard(request: Request):
 
 @api_router.post("/seed")
 async def seed_data():
-    """Seed 20 masterpieces with full narrative and forensic data"""
+    """Seed 30+ masterpieces including modern art with full narrative and forensic data"""
     
     artworks = [
-        # 1. Mona Lisa
+        # RENAISSANCE & BAROQUE (1-8)
         {
             "artwork_id": "art_mona_lisa",
             "title": "Mona Lisa",
             "artist": "Leonardo da Vinci",
             "year": "1503-1519",
             "period": "High Renaissance",
+            "movement": "Renaissance",
             "medium": "Oil on poplar panel",
             "dimensions": "77 cm × 53 cm",
             "location": "Louvre Museum, Paris",
@@ -1086,382 +1606,39 @@ async def seed_data():
             "is_featured": True,
             "story_id": "story_mona_lisa"
         },
-        # 2. Starry Night
-        {
-            "artwork_id": "art_starry_night",
-            "title": "The Starry Night",
-            "artist": "Vincent van Gogh",
-            "year": "1889",
-            "period": "Post-Impressionism",
-            "medium": "Oil on canvas",
-            "dimensions": "73.7 cm × 92.1 cm",
-            "location": "Museum of Modern Art, New York",
-            "image_url": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=400",
-            "description": "Painted from memory during Van Gogh's stay at the asylum in Saint-Rémy-de-Provence, depicting a swirling night sky.",
-            "provenance": [
-                {"year": "1889", "event": "Painted at Saint-Paul-de-Mausole asylum"},
-                {"year": "1900", "event": "Acquired by Emile Schuffenecker"},
-                {"year": "1941", "event": "Acquired by MoMA through Lillie P. Bliss bequest"}
-            ],
-            "forensic_data": {
-                "pigments": ["Prussian blue", "Chrome yellow", "Zinc white", "Lead white"],
-                "technique": "Impasto, visible brushstrokes showing emotional energy",
-                "signature_markers": "Characteristic thick impasto, swirling motion patterns",
-                "canvas_info": "Standard French canvas, plain weave, primed with lead white"
-            },
-            "is_featured": True,
-            "story_id": "story_starry_night"
-        },
-        # 3. Girl with a Pearl Earring
-        {
-            "artwork_id": "art_girl_pearl",
-            "title": "Girl with a Pearl Earring",
-            "artist": "Johannes Vermeer",
-            "year": "c. 1665",
-            "period": "Dutch Golden Age",
-            "medium": "Oil on canvas",
-            "dimensions": "44.5 cm × 39 cm",
-            "location": "Mauritshuis, The Hague",
-            "image_url": "https://images.unsplash.com/photo-1578321272176-b7bbc0679853?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578321272176-b7bbc0679853?w=400",
-            "description": "Often called the 'Mona Lisa of the North', featuring a girl in exotic dress with a large pearl earring.",
-            "provenance": [
-                {"year": "1881", "event": "Purchased at auction for 2 guilders"},
-                {"year": "1902", "event": "Bequeathed to the Mauritshuis"}
-            ],
-            "forensic_data": {
-                "pigments": ["Natural ultramarine (lapis lazuli)", "Lead-tin yellow", "Vermillion", "Bone black"],
-                "technique": "Pointillé highlights, masterful light manipulation",
-                "signature_markers": "Characteristic soft focus, luminous skin tones",
-                "canvas_info": "Fine linen canvas, tight weave pattern, thin ground layer"
-            },
-            "is_featured": True,
-            "story_id": "story_girl_pearl"
-        },
-        # 4. The Persistence of Memory
-        {
-            "artwork_id": "art_persistence",
-            "title": "The Persistence of Memory",
-            "artist": "Salvador Dalí",
-            "year": "1931",
-            "period": "Surrealism",
-            "medium": "Oil on canvas",
-            "dimensions": "24 cm × 33 cm",
-            "location": "Museum of Modern Art, New York",
-            "image_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=400",
-            "description": "Dalí's iconic surrealist masterpiece featuring melting watches in a dreamlike landscape.",
-            "provenance": [
-                {"year": "1931", "event": "First exhibited at Galerie Pierre Colle, Paris"},
-                {"year": "1934", "event": "Acquired by MoMA"}
-            ],
-            "forensic_data": {
-                "pigments": ["Cadmium yellow", "Cobalt blue", "Burnt sienna", "Titanium white"],
-                "technique": "Precise photorealistic technique, thin glazes",
-                "signature_markers": "Meticulous detail, dreamlike juxtaposition",
-                "canvas_info": "Small-scale canvas, fine grain, traditional priming"
-            },
-            "is_featured": True,
-            "story_id": "story_persistence"
-        },
-        # 5. The Birth of Venus
-        {
-            "artwork_id": "art_birth_venus",
-            "title": "The Birth of Venus",
-            "artist": "Sandro Botticelli",
-            "year": "c. 1485",
-            "period": "Italian Renaissance",
-            "medium": "Tempera on canvas",
-            "dimensions": "172.5 cm × 278.5 cm",
-            "location": "Uffizi Gallery, Florence",
-            "image_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=400",
-            "description": "Depicts the goddess Venus emerging from the sea as a fully grown woman.",
-            "provenance": [
-                {"year": "1485", "event": "Commissioned by Lorenzo di Pierfrancesco de' Medici"},
-                {"year": "1815", "event": "Entered the Uffizi collection"}
-            ],
-            "forensic_data": {
-                "pigments": ["Lapis lazuli ultramarine", "Gold leaf", "Verdigris", "Red lake"],
-                "technique": "Flowing linear style, idealized forms, tempera on canvas",
-                "signature_markers": "Characteristic flowing lines, elongated figures",
-                "canvas_info": "Large canvas, medium weave, gesso preparation"
-            },
-            "is_featured": True,
-            "story_id": "story_birth_venus"
-        },
-        # 6. The Last Supper
         {
             "artwork_id": "art_last_supper",
             "title": "The Last Supper",
             "artist": "Leonardo da Vinci",
             "year": "1495-1498",
             "period": "High Renaissance",
-            "medium": "Tempera and oil on gesso, pitch and mastic",
+            "movement": "Renaissance",
+            "medium": "Tempera and oil on gesso",
             "dimensions": "460 cm × 880 cm",
             "location": "Santa Maria delle Grazie, Milan",
             "image_url": "https://images.unsplash.com/photo-1574182245530-967d9b3831af?w=800",
             "thumbnail_url": "https://images.unsplash.com/photo-1574182245530-967d9b3831af?w=400",
             "description": "Leonardo's monumental mural depicting Christ's final meal with his disciples.",
             "provenance": [
-                {"year": "1498", "event": "Completed in refectory of Santa Maria delle Grazie"},
-                {"year": "1796", "event": "Survived Napoleon's troops using room as stable"},
-                {"year": "1943", "event": "Survived Allied bombing of Milan"}
+                {"year": "1498", "event": "Completed in refectory"},
+                {"year": "1943", "event": "Survived Allied bombing"}
             ],
             "forensic_data": {
-                "pigments": ["Lead white", "Vermillion", "Natural ultramarine", "Earth pigments"],
-                "technique": "Experimental oil and tempera on dry wall (not true fresco)",
-                "signature_markers": "One-point perspective, dramatic gestures, psychological depth",
-                "canvas_info": "Wall mural, gesso and pitch preparation, severe deterioration"
+                "pigments": ["Lead white", "Vermillion", "Natural ultramarine"],
+                "technique": "Experimental oil and tempera on dry wall",
+                "signature_markers": "One-point perspective, psychological depth",
+                "canvas_info": "Wall mural, severe deterioration"
             },
             "is_featured": True,
             "story_id": "story_last_supper"
         },
-        # 7. Guernica
-        {
-            "artwork_id": "art_guernica",
-            "title": "Guernica",
-            "artist": "Pablo Picasso",
-            "year": "1937",
-            "period": "Cubism/Surrealism",
-            "medium": "Oil on canvas",
-            "dimensions": "349 cm × 776 cm",
-            "location": "Museo Reina Sofía, Madrid",
-            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
-            "description": "Picasso's powerful anti-war statement responding to the bombing of Guernica.",
-            "provenance": [
-                {"year": "1937", "event": "Created for Spanish Pavilion, Paris World's Fair"},
-                {"year": "1939-1981", "event": "Held at MoMA, New York per Picasso's wishes"},
-                {"year": "1981", "event": "Returned to Spain after democracy restored"}
-            ],
-            "forensic_data": {
-                "pigments": ["Titanium white", "Ivory black", "Limited grayscale palette"],
-                "technique": "Cubist fragmentation, powerful symbolism, monochromatic",
-                "signature_markers": "Fragmented forms, distorted figures, newspaper texture elements",
-                "canvas_info": "Massive scale canvas, commercial priming, rapid execution marks"
-            },
-            "is_featured": True,
-            "story_id": "story_guernica"
-        },
-        # 8. The Scream
-        {
-            "artwork_id": "art_scream",
-            "title": "The Scream",
-            "artist": "Edvard Munch",
-            "year": "1893",
-            "period": "Expressionism",
-            "medium": "Tempera and crayon on cardboard",
-            "dimensions": "91 cm × 73.5 cm",
-            "location": "National Gallery, Oslo",
-            "image_url": "https://images.unsplash.com/photo-1579541814924-49fef17c5be5?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1579541814924-49fef17c5be5?w=400",
-            "description": "An iconic image of modern anxiety and existential dread.",
-            "provenance": [
-                {"year": "1893", "event": "Created as part of 'The Frieze of Life' series"},
-                {"year": "1994", "event": "Stolen and recovered"},
-                {"year": "2004", "event": "Second theft, recovered in 2006"}
-            ],
-            "forensic_data": {
-                "pigments": ["Cadmium pigments (orange/yellow)", "Prussian blue", "Vermillion"],
-                "technique": "Bold brushwork, swirling lines, emotional color",
-                "signature_markers": "Characteristic swirling sky, elongated figure",
-                "canvas_info": "Cardboard support (unusual), tempera and crayon mixed media"
-            },
-            "is_featured": True,
-            "story_id": "story_scream"
-        },
-        # 9. Water Lilies
-        {
-            "artwork_id": "art_water_lilies",
-            "title": "Water Lilies",
-            "artist": "Claude Monet",
-            "year": "1906",
-            "period": "Impressionism",
-            "medium": "Oil on canvas",
-            "dimensions": "89.9 cm × 94.1 cm",
-            "location": "Art Institute of Chicago",
-            "image_url": "https://images.unsplash.com/photo-1580136579312-94651dfd596d?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1580136579312-94651dfd596d?w=400",
-            "description": "Part of Monet's famous series depicting his water garden at Giverny.",
-            "provenance": [
-                {"year": "1906", "event": "Painted at Giverny"},
-                {"year": "1933", "event": "Acquired by Art Institute of Chicago"}
-            ],
-            "forensic_data": {
-                "pigments": ["Cobalt blue", "Viridian", "Chrome yellow", "Lead white"],
-                "technique": "Broken color, wet-on-wet application, atmospheric effects",
-                "signature_markers": "Characteristic loose brushwork, reflection studies",
-                "canvas_info": "Standard French canvas, commercial priming, thick impasto"
-            },
-            "is_featured": True,
-            "story_id": "story_water_lilies"
-        },
-        # 10. The Night Watch
-        {
-            "artwork_id": "art_night_watch",
-            "title": "The Night Watch",
-            "artist": "Rembrandt van Rijn",
-            "year": "1642",
-            "period": "Dutch Golden Age",
-            "medium": "Oil on canvas",
-            "dimensions": "363 cm × 437 cm",
-            "location": "Rijksmuseum, Amsterdam",
-            "image_url": "https://images.unsplash.com/photo-1577720643272-265f09367456?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1577720643272-265f09367456?w=400",
-            "description": "Rembrandt's masterpiece depicting a militia company in dramatic action.",
-            "provenance": [
-                {"year": "1642", "event": "Commissioned by militia company of Captain Frans Banning Cocq"},
-                {"year": "1715", "event": "Trimmed to fit new location in Amsterdam Town Hall"},
-                {"year": "1885", "event": "Moved to Rijksmuseum"}
-            ],
-            "forensic_data": {
-                "pigments": ["Lead white", "Yellow ochre", "Bone black", "Smalt"],
-                "technique": "Dramatic chiaroscuro, dynamic composition, thick impasto highlights",
-                "signature_markers": "Characteristic dramatic lighting, psychological depth",
-                "canvas_info": "Large linen canvas, multiple pieces joined, period stretcher"
-            },
-            "is_featured": True,
-            "story_id": "story_night_watch"
-        },
-        # 11. American Gothic
-        {
-            "artwork_id": "art_american_gothic",
-            "title": "American Gothic",
-            "artist": "Grant Wood",
-            "year": "1930",
-            "period": "Regionalism",
-            "medium": "Oil on beaverboard",
-            "dimensions": "78 cm × 65.3 cm",
-            "location": "Art Institute of Chicago",
-            "image_url": "https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=400",
-            "description": "An iconic image of rural American values and Midwestern character.",
-            "provenance": [
-                {"year": "1930", "event": "Won bronze medal at Art Institute of Chicago exhibition"},
-                {"year": "1930", "event": "Purchased by Art Institute of Chicago for $300"}
-            ],
-            "forensic_data": {
-                "pigments": ["Earth tones", "Prussian blue", "Lead white", "Zinc white"],
-                "technique": "Precise, detailed realism inspired by Flemish masters",
-                "signature_markers": "Hard-edged forms, meticulous detail, flat Midwestern light",
-                "canvas_info": "Beaverboard (composition board), unusual support material"
-            },
-            "is_featured": True,
-            "story_id": "story_american_gothic"
-        },
-        # 12. The Kiss
-        {
-            "artwork_id": "art_the_kiss",
-            "title": "The Kiss",
-            "artist": "Gustav Klimt",
-            "year": "1907-1908",
-            "period": "Art Nouveau/Symbolism",
-            "medium": "Oil and gold leaf on canvas",
-            "dimensions": "180 cm × 180 cm",
-            "location": "Österreichische Galerie Belvedere, Vienna",
-            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
-            "description": "Klimt's masterpiece of his 'Golden Phase', depicting an embracing couple.",
-            "provenance": [
-                {"year": "1908", "event": "Exhibited at Kunstschau Vienna"},
-                {"year": "1908", "event": "Purchased by Austrian state gallery"}
-            ],
-            "forensic_data": {
-                "pigments": ["Gold leaf (23.5 karat)", "Silver leaf", "Platinum leaf", "Oil pigments"],
-                "technique": "Byzantine-inspired gold technique, decorative patterns, flat space",
-                "signature_markers": "Geometric patterns, spiral motifs, gold leaf application",
-                "canvas_info": "Square format canvas, complex layering of gold and paint"
-            },
-            "is_featured": True,
-            "story_id": "story_the_kiss"
-        },
-        # 13. Las Meninas
-        {
-            "artwork_id": "art_las_meninas",
-            "title": "Las Meninas",
-            "artist": "Diego Velázquez",
-            "year": "1656",
-            "period": "Spanish Golden Age",
-            "medium": "Oil on canvas",
-            "dimensions": "318 cm × 276 cm",
-            "location": "Museo del Prado, Madrid",
-            "image_url": "https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?w=400",
-            "description": "A complex composition featuring the Infanta Margarita Teresa and her entourage.",
-            "provenance": [
-                {"year": "1656", "event": "Painted for King Philip IV's private office"},
-                {"year": "1819", "event": "Transferred to Museo del Prado"}
-            ],
-            "forensic_data": {
-                "pigments": ["Lead white", "Vermillion", "Azurite", "Yellow ochre", "Bone black"],
-                "technique": "Loose brushwork, atmospheric perspective, mirror reflection illusion",
-                "signature_markers": "Visible brushstrokes at distance, precise detail up close",
-                "canvas_info": "Large-scale canvas, Spanish linen, period stretcher bars"
-            },
-            "is_featured": True,
-            "story_id": "story_las_meninas"
-        },
-        # 14. The Great Wave off Kanagawa
-        {
-            "artwork_id": "art_great_wave",
-            "title": "The Great Wave off Kanagawa",
-            "artist": "Katsushika Hokusai",
-            "year": "c. 1831",
-            "period": "Edo Period",
-            "medium": "Woodblock print (nishiki-e)",
-            "dimensions": "25.7 cm × 37.9 cm",
-            "location": "Multiple collections worldwide",
-            "image_url": "https://images.unsplash.com/photo-1545569341-9eb8b30979d9?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1545569341-9eb8b30979d9?w=400",
-            "description": "The most recognized work of Japanese art, showing boats beneath a huge wave.",
-            "provenance": [
-                {"year": "1831", "event": "Published as part of 'Thirty-six Views of Mount Fuji'"},
-                {"year": "1850s", "event": "Introduced to Europe, influenced Impressionists"}
-            ],
-            "forensic_data": {
-                "pigments": ["Prussian blue (imported)", "Indigo", "Organic yellow"],
-                "technique": "Woodblock printing (mokuhanga), multiple impressions",
-                "signature_markers": "Distinctive wave pattern, Mount Fuji composition",
-                "canvas_info": "Mulberry paper (washi), carved cherry wood blocks"
-            },
-            "is_featured": True,
-            "story_id": "story_great_wave"
-        },
-        # 15. A Sunday on La Grande Jatte
-        {
-            "artwork_id": "art_grande_jatte",
-            "title": "A Sunday Afternoon on the Island of La Grande Jatte",
-            "artist": "Georges Seurat",
-            "year": "1884-1886",
-            "period": "Post-Impressionism/Pointillism",
-            "medium": "Oil on canvas",
-            "dimensions": "207.6 cm × 308 cm",
-            "location": "Art Institute of Chicago",
-            "image_url": "https://images.unsplash.com/photo-1578926288207-a90a5366759d?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578926288207-a90a5366759d?w=400",
-            "description": "The masterpiece of Pointillism, depicting Parisians relaxing by the Seine.",
-            "provenance": [
-                {"year": "1886", "event": "Exhibited at final Impressionist exhibition"},
-                {"year": "1924", "event": "Acquired by Art Institute of Chicago"}
-            ],
-            "forensic_data": {
-                "pigments": ["Chrome yellow", "Cadmium yellow", "Vermillion", "Emerald green", "Ultramarine"],
-                "technique": "Pointillism/Divisionism, thousands of tiny dots of pure color",
-                "signature_markers": "Scientific color theory application, painted border",
-                "canvas_info": "Large canvas, over 2 years of labor, painted frame border"
-            },
-            "is_featured": True,
-            "story_id": "story_grande_jatte"
-        },
-        # 16. The Creation of Adam
         {
             "artwork_id": "art_creation_adam",
             "title": "The Creation of Adam",
             "artist": "Michelangelo",
             "year": "c. 1512",
             "period": "High Renaissance",
+            "movement": "Renaissance",
             "medium": "Fresco",
             "dimensions": "280 cm × 570 cm",
             "location": "Sistine Chapel, Vatican City",
@@ -1469,122 +1646,672 @@ async def seed_data():
             "thumbnail_url": "https://images.unsplash.com/photo-1562604609-b9c81e714a78?w=400",
             "description": "The iconic image of God giving life to Adam on the Sistine Chapel ceiling.",
             "provenance": [
-                {"year": "1512", "event": "Completed as part of Sistine Chapel ceiling"},
-                {"year": "1980-1994", "event": "Major restoration revealed original colors"}
+                {"year": "1512", "event": "Completed on Sistine ceiling"},
+                {"year": "1994", "event": "Major restoration completed"}
             ],
             "forensic_data": {
-                "pigments": ["Earth pigments", "Azurite", "Malachite", "Lead white", "Vermillion"],
-                "technique": "Buon fresco (pigment applied to wet plaster)",
-                "signature_markers": "Anatomical precision, dynamic composition, monumental scale",
-                "canvas_info": "Ceiling plaster (intonaco), multiple giornate sections"
+                "pigments": ["Earth pigments", "Azurite", "Malachite", "Vermillion"],
+                "technique": "Buon fresco on wet plaster",
+                "signature_markers": "Anatomical precision, dynamic composition",
+                "canvas_info": "Ceiling plaster, multiple giornate"
             },
             "is_featured": True,
             "story_id": "story_creation_adam"
         },
-        # 17. Impression, Sunrise
         {
-            "artwork_id": "art_impression_sunrise",
-            "title": "Impression, Sunrise",
-            "artist": "Claude Monet",
-            "year": "1872",
-            "period": "Impressionism",
-            "medium": "Oil on canvas",
-            "dimensions": "48 cm × 63 cm",
-            "location": "Musée Marmottan Monet, Paris",
-            "image_url": "https://images.unsplash.com/photo-1578301978018-3005759f48f7?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578301978018-3005759f48f7?w=400",
-            "description": "The painting that gave Impressionism its name, depicting Le Havre harbor at sunrise.",
+            "artwork_id": "art_birth_venus",
+            "title": "The Birth of Venus",
+            "artist": "Sandro Botticelli",
+            "year": "c. 1485",
+            "period": "Italian Renaissance",
+            "movement": "Renaissance",
+            "medium": "Tempera on canvas",
+            "dimensions": "172.5 cm × 278.5 cm",
+            "location": "Uffizi Gallery, Florence",
+            "image_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=400",
+            "description": "Venus emerging from the sea as a fully grown woman.",
             "provenance": [
-                {"year": "1874", "event": "Exhibited at first Impressionist exhibition"},
-                {"year": "1985", "event": "Stolen and recovered in 1990"}
+                {"year": "1485", "event": "Commissioned by Medici"},
+                {"year": "1815", "event": "Entered Uffizi"}
             ],
             "forensic_data": {
-                "pigments": ["Cobalt blue", "Viridian", "Vermillion", "Chrome orange"],
-                "technique": "Rapid brushwork, plein air painting, atmospheric effects",
-                "signature_markers": "Loose handling, emphasis on light effects",
-                "canvas_info": "Standard French canvas, rapid execution, thin paint layers"
+                "pigments": ["Lapis lazuli ultramarine", "Gold leaf", "Verdigris"],
+                "technique": "Flowing linear style, tempera on canvas",
+                "signature_markers": "Flowing lines, elongated figures",
+                "canvas_info": "Large canvas, gesso preparation"
             },
             "is_featured": True,
-            "story_id": "story_impression_sunrise"
+            "story_id": "story_birth_venus"
         },
-        # 18. Café Terrace at Night
         {
-            "artwork_id": "art_cafe_terrace",
-            "title": "Café Terrace at Night",
-            "artist": "Vincent van Gogh",
-            "year": "1888",
-            "period": "Post-Impressionism",
+            "artwork_id": "art_girl_pearl",
+            "title": "Girl with a Pearl Earring",
+            "artist": "Johannes Vermeer",
+            "year": "c. 1665",
+            "period": "Dutch Golden Age",
+            "movement": "Baroque",
             "medium": "Oil on canvas",
-            "dimensions": "80.7 cm × 65.3 cm",
-            "location": "Kröller-Müller Museum, Netherlands",
-            "image_url": "https://images.unsplash.com/photo-1579783901586-d88db74b4fe4?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1579783901586-d88db74b4fe4?w=400",
-            "description": "A nocturnal scene painted on site in Arles, using no black pigment.",
+            "dimensions": "44.5 cm × 39 cm",
+            "location": "Mauritshuis, The Hague",
+            "image_url": "https://images.unsplash.com/photo-1578321272176-b7bbc0679853?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578321272176-b7bbc0679853?w=400",
+            "description": "Often called the 'Mona Lisa of the North'.",
             "provenance": [
-                {"year": "1888", "event": "Painted in Arles, France"},
-                {"year": "1890", "event": "Inherited by Theo van Gogh"},
-                {"year": "1938", "event": "Acquired by Kröller-Müller Museum"}
+                {"year": "1881", "event": "Purchased for 2 guilders"},
+                {"year": "1902", "event": "Bequeathed to Mauritshuis"}
             ],
             "forensic_data": {
-                "pigments": ["Prussian blue", "Chrome yellow", "Zinc white (no black used)"],
-                "technique": "Night scene with artificial and natural light, impasto",
-                "signature_markers": "Swirling sky, vibrant yellows, starlight depiction",
-                "canvas_info": "Standard canvas, thick impasto application"
+                "pigments": ["Natural ultramarine (lapis lazuli)", "Lead-tin yellow", "Vermillion"],
+                "technique": "Pointillé highlights, light manipulation",
+                "signature_markers": "Soft focus, luminous skin tones",
+                "canvas_info": "Fine linen canvas, tight weave"
             },
             "is_featured": True,
-            "story_id": "story_cafe_terrace"
+            "story_id": "story_girl_pearl"
         },
-        # 19. The Arnolfini Portrait
+        {
+            "artwork_id": "art_night_watch",
+            "title": "The Night Watch",
+            "artist": "Rembrandt van Rijn",
+            "year": "1642",
+            "period": "Dutch Golden Age",
+            "movement": "Baroque",
+            "medium": "Oil on canvas",
+            "dimensions": "363 cm × 437 cm",
+            "location": "Rijksmuseum, Amsterdam",
+            "image_url": "https://images.unsplash.com/photo-1577720643272-265f09367456?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1577720643272-265f09367456?w=400",
+            "description": "Rembrandt's masterpiece depicting a militia company in dramatic action.",
+            "provenance": [
+                {"year": "1642", "event": "Commissioned by militia"},
+                {"year": "1715", "event": "Trimmed to fit new location"},
+                {"year": "1885", "event": "Moved to Rijksmuseum"}
+            ],
+            "forensic_data": {
+                "pigments": ["Lead white", "Yellow ochre", "Bone black", "Smalt"],
+                "technique": "Dramatic chiaroscuro, thick impasto highlights",
+                "signature_markers": "Dramatic lighting, psychological depth",
+                "canvas_info": "Large linen canvas, multiple pieces joined"
+            },
+            "is_featured": True,
+            "story_id": "story_night_watch"
+        },
+        {
+            "artwork_id": "art_las_meninas",
+            "title": "Las Meninas",
+            "artist": "Diego Velázquez",
+            "year": "1656",
+            "period": "Spanish Golden Age",
+            "movement": "Baroque",
+            "medium": "Oil on canvas",
+            "dimensions": "318 cm × 276 cm",
+            "location": "Museo del Prado, Madrid",
+            "image_url": "https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?w=400",
+            "description": "A complex composition featuring Infanta Margarita Teresa.",
+            "provenance": [
+                {"year": "1656", "event": "Painted for Philip IV"},
+                {"year": "1819", "event": "Transferred to Prado"}
+            ],
+            "forensic_data": {
+                "pigments": ["Lead white", "Vermillion", "Azurite", "Yellow ochre"],
+                "technique": "Loose brushwork, atmospheric perspective",
+                "signature_markers": "Visible brushstrokes at distance",
+                "canvas_info": "Large-scale Spanish linen"
+            },
+            "is_featured": True,
+            "story_id": "story_las_meninas"
+        },
         {
             "artwork_id": "art_arnolfini",
             "title": "The Arnolfini Portrait",
             "artist": "Jan van Eyck",
             "year": "1434",
             "period": "Northern Renaissance",
+            "movement": "Renaissance",
             "medium": "Oil on oak panel",
             "dimensions": "82.2 cm × 60 cm",
             "location": "National Gallery, London",
             "image_url": "https://images.unsplash.com/photo-1578301978162-7aae4d755744?w=800",
             "thumbnail_url": "https://images.unsplash.com/photo-1578301978162-7aae4d755744?w=400",
-            "description": "A revolutionary double portrait showcasing Van Eyck's mastery of oil painting.",
+            "description": "Revolutionary double portrait showcasing oil painting mastery.",
             "provenance": [
                 {"year": "1434", "event": "Painted in Bruges"},
-                {"year": "1842", "event": "Acquired by National Gallery, London"}
+                {"year": "1842", "event": "Acquired by National Gallery"}
             ],
             "forensic_data": {
-                "pigments": ["Vermillion", "Malachite", "Azurite", "Lead-tin yellow", "Gold leaf"],
-                "technique": "Pioneering oil glazing technique, extreme detail, light effects",
-                "signature_markers": "Mirror reflection, meticulous textile rendering",
-                "canvas_info": "Oak panel, multiple thin oil glazes, remarkably preserved"
+                "pigments": ["Vermillion", "Malachite", "Azurite", "Gold leaf"],
+                "technique": "Pioneering oil glazing, extreme detail",
+                "signature_markers": "Mirror reflection, textile rendering",
+                "canvas_info": "Oak panel, multiple thin oil glazes"
             },
             "is_featured": True,
             "story_id": "story_arnolfini"
         },
-        # 20. Nighthawks
+        # IMPRESSIONISM & POST-IMPRESSIONISM (9-14)
+        {
+            "artwork_id": "art_starry_night",
+            "title": "The Starry Night",
+            "artist": "Vincent van Gogh",
+            "year": "1889",
+            "period": "Post-Impressionism",
+            "movement": "Post-Impressionism",
+            "medium": "Oil on canvas",
+            "dimensions": "73.7 cm × 92.1 cm",
+            "location": "Museum of Modern Art, New York",
+            "image_url": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=400",
+            "description": "Painted at the asylum depicting a swirling night sky.",
+            "provenance": [
+                {"year": "1889", "event": "Painted at asylum"},
+                {"year": "1941", "event": "Acquired by MoMA"}
+            ],
+            "forensic_data": {
+                "pigments": ["Prussian blue", "Chrome yellow", "Zinc white"],
+                "technique": "Impasto, visible emotional brushstrokes",
+                "signature_markers": "Thick impasto, swirling motion",
+                "canvas_info": "French canvas, lead white priming"
+            },
+            "is_featured": True,
+            "story_id": "story_starry_night"
+        },
+        {
+            "artwork_id": "art_cafe_terrace",
+            "title": "Café Terrace at Night",
+            "artist": "Vincent van Gogh",
+            "year": "1888",
+            "period": "Post-Impressionism",
+            "movement": "Post-Impressionism",
+            "medium": "Oil on canvas",
+            "dimensions": "80.7 cm × 65.3 cm",
+            "location": "Kröller-Müller Museum",
+            "image_url": "https://images.unsplash.com/photo-1579783901586-d88db74b4fe4?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1579783901586-d88db74b4fe4?w=400",
+            "description": "A nocturnal scene painted without black pigment.",
+            "provenance": [
+                {"year": "1888", "event": "Painted in Arles"},
+                {"year": "1938", "event": "Acquired by Kröller-Müller"}
+            ],
+            "forensic_data": {
+                "pigments": ["Prussian blue", "Chrome yellow", "Zinc white (no black)"],
+                "technique": "Night scene with artificial light, impasto",
+                "signature_markers": "Vibrant yellows, starlight depiction",
+                "canvas_info": "Standard canvas, thick impasto"
+            },
+            "is_featured": True,
+            "story_id": "story_cafe_terrace"
+        },
+        {
+            "artwork_id": "art_water_lilies",
+            "title": "Water Lilies",
+            "artist": "Claude Monet",
+            "year": "1906",
+            "period": "Impressionism",
+            "movement": "Impressionism",
+            "medium": "Oil on canvas",
+            "dimensions": "89.9 cm × 94.1 cm",
+            "location": "Art Institute of Chicago",
+            "image_url": "https://images.unsplash.com/photo-1580136579312-94651dfd596d?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1580136579312-94651dfd596d?w=400",
+            "description": "Part of Monet's famous series from Giverny.",
+            "provenance": [
+                {"year": "1906", "event": "Painted at Giverny"},
+                {"year": "1933", "event": "Acquired by Art Institute"}
+            ],
+            "forensic_data": {
+                "pigments": ["Cobalt blue", "Viridian", "Chrome yellow", "Lead white"],
+                "technique": "Broken color, wet-on-wet, atmospheric",
+                "signature_markers": "Loose brushwork, reflection studies",
+                "canvas_info": "French canvas, thick impasto"
+            },
+            "is_featured": True,
+            "story_id": "story_water_lilies"
+        },
+        {
+            "artwork_id": "art_impression_sunrise",
+            "title": "Impression, Sunrise",
+            "artist": "Claude Monet",
+            "year": "1872",
+            "period": "Impressionism",
+            "movement": "Impressionism",
+            "medium": "Oil on canvas",
+            "dimensions": "48 cm × 63 cm",
+            "location": "Musée Marmottan Monet, Paris",
+            "image_url": "https://images.unsplash.com/photo-1578301978018-3005759f48f7?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578301978018-3005759f48f7?w=400",
+            "description": "The painting that gave Impressionism its name.",
+            "provenance": [
+                {"year": "1874", "event": "First Impressionist exhibition"},
+                {"year": "1985", "event": "Stolen and recovered 1990"}
+            ],
+            "forensic_data": {
+                "pigments": ["Cobalt blue", "Viridian", "Vermillion", "Chrome orange"],
+                "technique": "Rapid plein air brushwork, atmospheric",
+                "signature_markers": "Loose handling, light effects",
+                "canvas_info": "French canvas, thin paint layers"
+            },
+            "is_featured": True,
+            "story_id": "story_impression_sunrise"
+        },
+        {
+            "artwork_id": "art_grande_jatte",
+            "title": "A Sunday on La Grande Jatte",
+            "artist": "Georges Seurat",
+            "year": "1884-1886",
+            "period": "Post-Impressionism",
+            "movement": "Pointillism",
+            "medium": "Oil on canvas",
+            "dimensions": "207.6 cm × 308 cm",
+            "location": "Art Institute of Chicago",
+            "image_url": "https://images.unsplash.com/photo-1578926288207-a90a5366759d?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578926288207-a90a5366759d?w=400",
+            "description": "The masterpiece of Pointillism.",
+            "provenance": [
+                {"year": "1886", "event": "Final Impressionist exhibition"},
+                {"year": "1924", "event": "Acquired by Art Institute"}
+            ],
+            "forensic_data": {
+                "pigments": ["Chrome yellow", "Cadmium yellow", "Vermillion", "Emerald green"],
+                "technique": "Pointillism, thousands of color dots",
+                "signature_markers": "Scientific color theory, painted border",
+                "canvas_info": "Large canvas, over 2 years labor"
+            },
+            "is_featured": True,
+            "story_id": "story_grande_jatte"
+        },
+        {
+            "artwork_id": "art_the_kiss",
+            "title": "The Kiss",
+            "artist": "Gustav Klimt",
+            "year": "1907-1908",
+            "period": "Art Nouveau",
+            "movement": "Symbolism",
+            "medium": "Oil and gold leaf on canvas",
+            "dimensions": "180 cm × 180 cm",
+            "location": "Belvedere, Vienna",
+            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "description": "Klimt's masterpiece of the Golden Phase.",
+            "provenance": [
+                {"year": "1908", "event": "Exhibited at Kunstschau"},
+                {"year": "1908", "event": "Purchased by Austrian state"}
+            ],
+            "forensic_data": {
+                "pigments": ["Gold leaf (23.5 karat)", "Silver leaf", "Platinum leaf"],
+                "technique": "Byzantine-inspired gold, decorative patterns",
+                "signature_markers": "Geometric patterns, spiral motifs",
+                "canvas_info": "Square format, complex gold layering"
+            },
+            "is_featured": True,
+            "story_id": "story_the_kiss"
+        },
+        # MODERN ART (15-22)
+        {
+            "artwork_id": "art_scream",
+            "title": "The Scream",
+            "artist": "Edvard Munch",
+            "year": "1893",
+            "period": "Expressionism",
+            "movement": "Expressionism",
+            "medium": "Tempera and crayon on cardboard",
+            "dimensions": "91 cm × 73.5 cm",
+            "location": "National Gallery, Oslo",
+            "image_url": "https://images.unsplash.com/photo-1579541814924-49fef17c5be5?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1579541814924-49fef17c5be5?w=400",
+            "description": "Iconic image of modern anxiety.",
+            "provenance": [
+                {"year": "1893", "event": "Created for Frieze of Life"},
+                {"year": "1994", "event": "Stolen and recovered"},
+                {"year": "2004", "event": "Stolen again, recovered 2006"}
+            ],
+            "forensic_data": {
+                "pigments": ["Cadmium orange/yellow", "Prussian blue", "Vermillion"],
+                "technique": "Bold brushwork, swirling lines",
+                "signature_markers": "Swirling sky, elongated figure",
+                "canvas_info": "Cardboard support, mixed media"
+            },
+            "is_featured": True,
+            "story_id": "story_scream"
+        },
+        {
+            "artwork_id": "art_persistence",
+            "title": "The Persistence of Memory",
+            "artist": "Salvador Dalí",
+            "year": "1931",
+            "period": "Surrealism",
+            "movement": "Surrealism",
+            "medium": "Oil on canvas",
+            "dimensions": "24 cm × 33 cm",
+            "location": "Museum of Modern Art, New York",
+            "image_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=400",
+            "description": "Dalí's iconic melting watches.",
+            "provenance": [
+                {"year": "1931", "event": "First exhibited in Paris"},
+                {"year": "1934", "event": "Acquired by MoMA"}
+            ],
+            "forensic_data": {
+                "pigments": ["Cadmium yellow", "Cobalt blue", "Burnt sienna"],
+                "technique": "Photorealistic, thin glazes",
+                "signature_markers": "Meticulous detail, dreamlike juxtaposition",
+                "canvas_info": "Small-scale, fine grain"
+            },
+            "is_featured": True,
+            "story_id": "story_persistence"
+        },
+        {
+            "artwork_id": "art_guernica",
+            "title": "Guernica",
+            "artist": "Pablo Picasso",
+            "year": "1937",
+            "period": "Cubism",
+            "movement": "Cubism",
+            "medium": "Oil on canvas",
+            "dimensions": "349 cm × 776 cm",
+            "location": "Museo Reina Sofía, Madrid",
+            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "description": "Powerful anti-war statement.",
+            "provenance": [
+                {"year": "1937", "event": "Created for Paris World's Fair"},
+                {"year": "1981", "event": "Returned to Spain"}
+            ],
+            "forensic_data": {
+                "pigments": ["Titanium white", "Ivory black", "Grayscale only"],
+                "technique": "Cubist fragmentation, monochromatic",
+                "signature_markers": "Fragmented forms, newspaper texture",
+                "canvas_info": "Massive scale, rapid execution"
+            },
+            "is_featured": True,
+            "story_id": "story_guernica"
+        },
+        {
+            "artwork_id": "art_american_gothic",
+            "title": "American Gothic",
+            "artist": "Grant Wood",
+            "year": "1930",
+            "period": "Regionalism",
+            "movement": "American Regionalism",
+            "medium": "Oil on beaverboard",
+            "dimensions": "78 cm × 65.3 cm",
+            "location": "Art Institute of Chicago",
+            "image_url": "https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=400",
+            "description": "Iconic image of rural America.",
+            "provenance": [
+                {"year": "1930", "event": "Won bronze medal"},
+                {"year": "1930", "event": "Purchased for $300"}
+            ],
+            "forensic_data": {
+                "pigments": ["Earth tones", "Prussian blue", "Lead white"],
+                "technique": "Precise Flemish-inspired realism",
+                "signature_markers": "Hard-edged forms, flat light",
+                "canvas_info": "Beaverboard, unusual support"
+            },
+            "is_featured": True,
+            "story_id": "story_american_gothic"
+        },
         {
             "artwork_id": "art_nighthawks",
             "title": "Nighthawks",
             "artist": "Edward Hopper",
             "year": "1942",
             "period": "American Realism",
+            "movement": "American Realism",
             "medium": "Oil on canvas",
             "dimensions": "84.1 cm × 152.4 cm",
             "location": "Art Institute of Chicago",
             "image_url": "https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=800",
             "thumbnail_url": "https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=400",
-            "description": "An iconic image of urban isolation, depicting a late-night diner scene.",
+            "description": "Iconic image of urban isolation.",
             "provenance": [
-                {"year": "1942", "event": "Completed shortly after Pearl Harbor attack"},
-                {"year": "1942", "event": "Purchased by Art Institute of Chicago for $3,000"}
+                {"year": "1942", "event": "Completed after Pearl Harbor"},
+                {"year": "1942", "event": "Purchased for $3,000"}
             ],
             "forensic_data": {
-                "pigments": ["Cadmium red", "Viridian", "Ultramarine", "Zinc white"],
-                "technique": "Sharp geometric composition, artificial light study",
-                "signature_markers": "Characteristic Hopper light, urban alienation theme",
-                "canvas_info": "Standard canvas, smooth paint application, careful planning"
+                "pigments": ["Cadmium red", "Viridian", "Ultramarine"],
+                "technique": "Sharp geometric, artificial light study",
+                "signature_markers": "Characteristic light, urban alienation",
+                "canvas_info": "Standard canvas, smooth application"
             },
             "is_featured": True,
             "story_id": "story_nighthawks"
+        },
+        {
+            "artwork_id": "art_great_wave",
+            "title": "The Great Wave off Kanagawa",
+            "artist": "Katsushika Hokusai",
+            "year": "c. 1831",
+            "period": "Edo Period",
+            "movement": "Ukiyo-e",
+            "medium": "Woodblock print",
+            "dimensions": "25.7 cm × 37.9 cm",
+            "location": "Multiple collections",
+            "image_url": "https://images.unsplash.com/photo-1545569341-9eb8b30979d9?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1545569341-9eb8b30979d9?w=400",
+            "description": "The most recognized Japanese artwork.",
+            "provenance": [
+                {"year": "1831", "event": "Published in Thirty-six Views series"},
+                {"year": "1850s", "event": "Introduced to Europe"}
+            ],
+            "forensic_data": {
+                "pigments": ["Prussian blue (imported)", "Indigo", "Organic yellow"],
+                "technique": "Woodblock printing (mokuhanga)",
+                "signature_markers": "Distinctive wave pattern, Mount Fuji",
+                "canvas_info": "Mulberry paper, cherry wood blocks"
+            },
+            "is_featured": True,
+            "story_id": "story_great_wave"
+        },
+        # CONTEMPORARY & POP ART (23-30)
+        {
+            "artwork_id": "art_campbell_soup",
+            "title": "Campbell's Soup Cans",
+            "artist": "Andy Warhol",
+            "year": "1962",
+            "period": "Pop Art",
+            "movement": "Pop Art",
+            "medium": "Synthetic polymer paint on canvas",
+            "dimensions": "51 cm × 41 cm each (32 canvases)",
+            "location": "Museum of Modern Art, New York",
+            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "description": "Warhol's iconic Pop Art statement on consumer culture.",
+            "provenance": [
+                {"year": "1962", "event": "First exhibited at Ferus Gallery, LA"},
+                {"year": "1996", "event": "Acquired by MoMA"}
+            ],
+            "forensic_data": {
+                "pigments": ["Synthetic polymer paints", "Commercial inks", "Acrylic"],
+                "technique": "Semi-mechanized production, silkscreen elements",
+                "signature_markers": "Mass-production aesthetic, consumer imagery",
+                "canvas_info": "32 individual canvases, uniform size"
+            },
+            "is_featured": True,
+            "story_id": "story_campbell_soup"
+        },
+        {
+            "artwork_id": "art_marilyn_diptych",
+            "title": "Marilyn Diptych",
+            "artist": "Andy Warhol",
+            "year": "1962",
+            "period": "Pop Art",
+            "movement": "Pop Art",
+            "medium": "Acrylic and silkscreen on canvas",
+            "dimensions": "205.4 cm × 289.6 cm",
+            "location": "Tate Modern, London",
+            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "description": "50 images of Marilyn Monroe exploring fame and mortality.",
+            "provenance": [
+                {"year": "1962", "event": "Created after Monroe's death"},
+                {"year": "1980", "event": "Acquired by Tate"}
+            ],
+            "forensic_data": {
+                "pigments": ["Acrylic paints", "Silkscreen inks", "Fluorescent colors"],
+                "technique": "Silkscreen printing, deliberate variations",
+                "signature_markers": "Repetition with degradation, celebrity imagery",
+                "canvas_info": "Two-panel diptych format"
+            },
+            "is_featured": True,
+            "story_id": "story_marilyn_diptych"
+        },
+        {
+            "artwork_id": "art_drowning_girl",
+            "title": "Drowning Girl",
+            "artist": "Roy Lichtenstein",
+            "year": "1963",
+            "period": "Pop Art",
+            "movement": "Pop Art",
+            "medium": "Oil and synthetic polymer on canvas",
+            "dimensions": "171.6 cm × 169.5 cm",
+            "location": "Museum of Modern Art, New York",
+            "image_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=400",
+            "description": "Comic-book style melodrama elevated to fine art.",
+            "provenance": [
+                {"year": "1963", "event": "Created based on DC Comics panel"},
+                {"year": "1971", "event": "Acquired by MoMA"}
+            ],
+            "forensic_data": {
+                "pigments": ["Primary colors only", "Industrial paints", "Ben-Day dots"],
+                "technique": "Simulated Ben-Day dots, bold outlines",
+                "signature_markers": "Comic imagery, thought bubble, cropping",
+                "canvas_info": "Large scale, mechanical appearance"
+            },
+            "is_featured": True,
+            "story_id": "story_drowning_girl"
+        },
+        {
+            "artwork_id": "art_no_5_1948",
+            "title": "No. 5, 1948",
+            "artist": "Jackson Pollock",
+            "year": "1948",
+            "period": "Abstract Expressionism",
+            "movement": "Abstract Expressionism",
+            "medium": "Oil on fiberboard",
+            "dimensions": "244 cm × 122 cm",
+            "location": "Private Collection",
+            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "description": "Quintessential drip painting, sold for $140 million in 2006.",
+            "provenance": [
+                {"year": "1948", "event": "Created in Springs, Long Island"},
+                {"year": "2006", "event": "Sold for record $140 million"}
+            ],
+            "forensic_data": {
+                "pigments": ["Alkyd enamels", "House paints", "Industrial materials"],
+                "technique": "Drip painting, action painting, all-over composition",
+                "signature_markers": "Continuous line, rhythmic splatters, no focal point",
+                "canvas_info": "Fiberboard, laid flat during creation"
+            },
+            "is_featured": True,
+            "story_id": "story_no_5_1948"
+        },
+        {
+            "artwork_id": "art_rothko_orange",
+            "title": "Orange, Red, Yellow",
+            "artist": "Mark Rothko",
+            "year": "1961",
+            "period": "Abstract Expressionism",
+            "movement": "Color Field",
+            "medium": "Oil on canvas",
+            "dimensions": "236.2 cm × 206.4 cm",
+            "location": "Private Collection",
+            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "description": "Luminous color field painting sold for $86.9 million.",
+            "provenance": [
+                {"year": "1961", "event": "Created in New York studio"},
+                {"year": "2012", "event": "Sold at Christie's for $86.9 million"}
+            ],
+            "forensic_data": {
+                "pigments": ["Thinned oils", "Egg tempera underpainting", "Cadmium colors"],
+                "technique": "Thin washes, floating rectangles, feathered edges",
+                "signature_markers": "Soft edges, luminous depth, meditative scale",
+                "canvas_info": "Unprimed canvas, thin paint layers"
+            },
+            "is_featured": True,
+            "story_id": "story_rothko_orange"
+        },
+        {
+            "artwork_id": "art_balloon_dog",
+            "title": "Balloon Dog (Orange)",
+            "artist": "Jeff Koons",
+            "year": "1994-2000",
+            "period": "Contemporary",
+            "movement": "Neo-Pop",
+            "medium": "Mirror-polished stainless steel",
+            "dimensions": "307 cm × 363 cm × 114 cm",
+            "location": "Private Collection",
+            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "description": "Monumental sculpture sold for $58.4 million in 2013.",
+            "provenance": [
+                {"year": "2000", "event": "Completed as part of Celebration series"},
+                {"year": "2013", "event": "Sold at Christie's for $58.4 million"}
+            ],
+            "forensic_data": {
+                "pigments": ["Transparent color coating", "Mirror-polished steel"],
+                "technique": "Industrial fabrication, computer-aided design",
+                "signature_markers": "Perfect reflective surface, monumental scale",
+                "canvas_info": "Stainless steel, factory-produced"
+            },
+            "is_featured": True,
+            "story_id": "story_balloon_dog"
+        },
+        {
+            "artwork_id": "art_girl_balloon",
+            "title": "Girl with Balloon",
+            "artist": "Banksy",
+            "year": "2002",
+            "period": "Street Art",
+            "movement": "Street Art",
+            "medium": "Stencil spray paint",
+            "dimensions": "Variable",
+            "location": "Multiple locations/Private",
+            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "description": "Iconic stencil that self-destructed at Sotheby's auction in 2018.",
+            "provenance": [
+                {"year": "2002", "event": "First appeared on London wall"},
+                {"year": "2018", "event": "Self-shredded at Sotheby's, renamed 'Love is in the Bin'"}
+            ],
+            "forensic_data": {
+                "pigments": ["Spray paint", "Stencil-applied"],
+                "technique": "Multi-layer stencil, street art aesthetic",
+                "signature_markers": "Simple imagery, political undertones",
+                "canvas_info": "Originally on walls, later on canvas"
+            },
+            "is_featured": True,
+            "story_id": "story_girl_balloon"
+        },
+        {
+            "artwork_id": "art_physical_impossibility",
+            "title": "The Physical Impossibility of Death in the Mind of Someone Living",
+            "artist": "Damien Hirst",
+            "year": "1991",
+            "period": "Contemporary",
+            "movement": "YBA (Young British Artists)",
+            "medium": "Tiger shark, glass, steel, formaldehyde",
+            "dimensions": "213 cm × 518 cm × 213 cm",
+            "location": "Private Collection",
+            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "description": "Preserved shark that defined YBA movement, sold for $12 million.",
+            "provenance": [
+                {"year": "1991", "event": "Commissioned by Charles Saatchi"},
+                {"year": "2004", "event": "Sold to Steve Cohen for $12 million"}
+            ],
+            "forensic_data": {
+                "pigments": ["Formaldehyde solution", "Steel framework"],
+                "technique": "Preserved specimen installation",
+                "signature_markers": "Confrontation with mortality, shock value",
+                "canvas_info": "Glass vitrine, steel frame, chemical preservation"
+            },
+            "is_featured": True,
+            "story_id": "story_physical_impossibility"
         }
     ]
     
@@ -1633,6 +2360,7 @@ async def seed_data():
                 "canvas_analysis": artwork["forensic_data"]["canvas_info"],
                 "technique_notes": artwork["forensic_data"]["technique"],
                 "authentication_score": 98.7,
+                "movement": artwork.get("movement", artwork["period"]),
                 "key_markers": [
                     f"Pigment profile matches {artwork['period']} materials",
                     f"Technique consistent with {artwork['artist']}'s documented methods",
@@ -1659,15 +2387,92 @@ async def seed_data():
             upsert=True
         )
     
-    # Create indexes for CRM
+    # Seed museum partners
+    museum_partners = [
+        {
+            "partner_id": "museum_louvre",
+            "name": "Louvre Museum",
+            "location": "Paris",
+            "country": "France",
+            "website": "https://www.louvre.fr",
+            "partnership_tier": "exclusive",
+            "artworks_count": 3,
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        {
+            "partner_id": "museum_moma",
+            "name": "Museum of Modern Art",
+            "location": "New York",
+            "country": "USA",
+            "website": "https://www.moma.org",
+            "partnership_tier": "exclusive",
+            "artworks_count": 5,
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        {
+            "partner_id": "museum_uffizi",
+            "name": "Uffizi Gallery",
+            "location": "Florence",
+            "country": "Italy",
+            "website": "https://www.uffizi.it",
+            "partnership_tier": "premium",
+            "artworks_count": 2,
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        {
+            "partner_id": "museum_prado",
+            "name": "Museo del Prado",
+            "location": "Madrid",
+            "country": "Spain",
+            "website": "https://www.museodelprado.es",
+            "partnership_tier": "premium",
+            "artworks_count": 2,
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        {
+            "partner_id": "museum_tate",
+            "name": "Tate Modern",
+            "location": "London",
+            "country": "UK",
+            "website": "https://www.tate.org.uk",
+            "partnership_tier": "premium",
+            "artworks_count": 3,
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+    ]
+    
+    for partner in museum_partners:
+        await db.museum_partners.update_one(
+            {"partner_id": partner["partner_id"]},
+            {"$set": partner},
+            upsert=True
+        )
+    
+    # Create indexes
     await db.user_activities.create_index([("user_id", 1), ("created_at", -1)])
     await db.user_activities.create_index([("activity_type", 1)])
     await db.users.create_index([("email", 1)], unique=True)
     await db.users.create_index([("subscription_tier", 1)])
+    await db.users.create_index([("role", 1)])
     await db.users.create_index([("last_active", -1)])
     await db.users.create_index([("total_spent", -1)])
+    await db.artworks.create_index([("period", 1)])
+    await db.artworks.create_index([("movement", 1)])
+    await db.artworks.create_index([("is_user_submitted", 1)])
+    await db.email_campaigns.create_index([("status", 1)])
+    await db.advisory_sessions.create_index([("user_id", 1), ("scheduled_at", -1)])
     
-    return {"message": "Data seeded successfully", "artworks": len(artworks), "stories": len(stories)}
+    return {
+        "message": "Data seeded successfully",
+        "artworks": len(artworks),
+        "stories": len(stories),
+        "museum_partners": len(museum_partners)
+    }
 
 # Include routers
 api_router.include_router(auth_router)
@@ -1678,6 +2483,9 @@ api_router.include_router(payments_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(dashboard_router)
 api_router.include_router(crm_router)
+api_router.include_router(admin_router)
+api_router.include_router(campaigns_router)
+api_router.include_router(museum_router)
 
 @api_router.get("/")
 async def root():
