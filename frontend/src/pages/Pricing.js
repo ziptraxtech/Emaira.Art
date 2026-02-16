@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Tabs,
-  TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
@@ -79,7 +78,6 @@ const Pricing = () => {
           window.location.href = response.data.url;
         }
       } else {
-        // Razorpay
         const response = await axios.post(
           `${API}/payments/razorpay/order`,
           { tier_id: tierId },
@@ -93,7 +91,7 @@ const Pricing = () => {
           order_id: response.data.order_id,
           name: "Emaira.Art",
           description: `${tierId} Subscription`,
-          handler: function (rzpResponse) {
+          handler: function () {
             toast.success("Payment successful!");
             navigate('/dashboard');
           },
@@ -102,7 +100,7 @@ const Pricing = () => {
             name: user.name
           },
           theme: {
-            color: "#D4AF37"
+            color: "#B8962F"
           }
         };
 
@@ -126,7 +124,7 @@ const Pricing = () => {
     deep_dive: {
       icon: <Fingerprint className="w-6 h-6" />,
       featured: false,
-      color: "cyan"
+      color: "navy"
     },
     connoisseur: {
       icon: <Sparkles className="w-6 h-6" />,
@@ -141,21 +139,24 @@ const Pricing = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505]">
+    <div className="min-h-screen bg-[#FAFAF8]">
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 glass-dark">
+      <nav className="fixed top-0 left-0 right-0 z-50 glass-light">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 lg:h-20">
             <Link to="/" className="flex items-center gap-2">
               <div className="w-10 h-10 rounded bg-gradient-to-br from-[#D4AF37] to-[#B8962F] flex items-center justify-center">
-                <span className="font-display text-[#050505] text-xl font-bold">E</span>
+                <span className="font-display text-white text-xl font-bold">E</span>
               </div>
-              <span className="font-display text-xl text-[#F5F5F0] hidden sm:block">Emaira.Art</span>
+              <span className="font-display text-xl text-[#1A1A18] hidden sm:block">Emaira.Art</span>
             </Link>
 
             <div className="hidden md:flex items-center gap-8">
               <Link to="/gallery" className="nav-link text-sm font-medium">Gallery</Link>
-              <Link to="/pricing" className="text-sm font-medium text-[#D4AF37]">Pricing</Link>
+              <Link to="/about" className="nav-link text-sm font-medium">About</Link>
+              <Link to="/technology" className="nav-link text-sm font-medium">Technology</Link>
+              <Link to="/events" className="nav-link text-sm font-medium">Events</Link>
+              <Link to="/pricing" className="text-sm font-medium text-[#B8962F]">Pricing</Link>
               {user && <Link to="/dashboard" className="nav-link text-sm font-medium">Dashboard</Link>}
             </div>
 
@@ -163,7 +164,7 @@ const Pricing = () => {
               {user ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="flex items-center gap-2 text-[#F5F5F0]">
+                    <Button variant="ghost" className="flex items-center gap-2 text-[#1A1A18]">
                       {user.picture ? (
                         <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full" />
                       ) : (
@@ -171,11 +172,11 @@ const Pricing = () => {
                       )}
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="bg-[#0a0a0a] border-[#1a1a1a]">
-                    <DropdownMenuItem onClick={() => navigate('/dashboard')} className="text-[#F5F5F0] focus:bg-[#111] cursor-pointer">
+                  <DropdownMenuContent align="end" className="bg-white border-[#E8E8E0]">
+                    <DropdownMenuItem onClick={() => navigate('/dashboard')} className="cursor-pointer">
                       <User className="w-4 h-4 mr-2" /> Dashboard
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={logout} className="text-[#F5F5F0] focus:bg-[#111] cursor-pointer">
+                    <DropdownMenuItem onClick={logout} className="cursor-pointer">
                       <LogOut className="w-4 h-4 mr-2" /> Logout
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -185,7 +186,7 @@ const Pricing = () => {
               )}
             </div>
 
-            <button className="md:hidden text-[#F5F5F0]" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+            <button className="md:hidden text-[#1A1A18]" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
@@ -200,17 +201,17 @@ const Pricing = () => {
             <Button 
               variant="ghost" 
               onClick={() => navigate('/')} 
-              className="text-[#A8A8A0] hover:text-[#F5F5F0] mb-4"
+              className="text-[#4A4A45] hover:text-[#1A1A18] mb-4"
             >
               <ArrowLeft className="w-4 h-4 mr-2" /> Back to Home
             </Button>
             <Badge className="badge-gold mb-4">
               <Sparkles className="w-3 h-3 mr-1" /> Choose Your Experience
             </Badge>
-            <h1 className="font-display text-4xl lg:text-5xl text-[#F5F5F0] mb-4">
+            <h1 className="font-display text-4xl lg:text-5xl text-[#1A1A18] mb-4">
               Subscription Plans
             </h1>
-            <p className="text-[#A8A8A0] text-lg max-w-2xl mx-auto">
+            <p className="text-[#4A4A45] text-lg max-w-2xl mx-auto">
               From single story experiences to unlimited access with AI forensics—choose the plan that fits your passion.
             </p>
           </div>
@@ -218,16 +219,16 @@ const Pricing = () => {
           {/* Payment Method Toggle */}
           <div className="flex justify-center mb-8">
             <Tabs value={paymentMethod} onValueChange={setPaymentMethod}>
-              <TabsList className="bg-[#111]">
+              <TabsList className="bg-[#F5F5F0]">
                 <TabsTrigger 
                   value="stripe" 
-                  className="data-[state=active]:bg-[#D4AF37] data-[state=active]:text-[#050505]"
+                  className="data-[state=active]:bg-[#B8962F] data-[state=active]:text-white"
                 >
                   <CreditCard className="w-4 h-4 mr-2" /> Card (Stripe)
                 </TabsTrigger>
                 <TabsTrigger 
                   value="razorpay"
-                  className="data-[state=active]:bg-[#D4AF37] data-[state=active]:text-[#050505]"
+                  className="data-[state=active]:bg-[#B8962F] data-[state=active]:text-white"
                 >
                   <CreditCard className="w-4 h-4 mr-2" /> Razorpay (India)
                 </TabsTrigger>
@@ -239,7 +240,7 @@ const Pricing = () => {
           {loading ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
               {[...Array(4)].map((_, i) => (
-                <div key={i} className="skeleton-dark h-96 rounded-lg"></div>
+                <div key={i} className="skeleton-light h-96 rounded-lg"></div>
               ))}
             </div>
           ) : (
@@ -255,33 +256,33 @@ const Pricing = () => {
                     data-testid={`tier-${tier.tier_id}`}
                   >
                     {config.featured && (
-                      <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 badge-gold">
+                      <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#B8962F] text-white border-0">
                         MOST POPULAR
                       </Badge>
                     )}
 
                     <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 ${
-                      config.color === 'cyan' 
-                        ? 'bg-[#00F0FF]/10 text-[#00F0FF]' 
-                        : 'bg-[#D4AF37]/10 text-[#D4AF37]'
+                      config.color === 'navy' 
+                        ? 'bg-[#1A365D]/10 text-[#1A365D]' 
+                        : 'bg-[#B8962F]/10 text-[#B8962F]'
                     }`}>
                       {config.icon}
                     </div>
 
-                    <h3 className="font-display text-xl text-[#F5F5F0] mb-2">{tier.name}</h3>
+                    <h3 className="font-display text-xl text-[#1A1A18] mb-2">{tier.name}</h3>
                     
                     <div className="flex items-baseline gap-1 mb-4">
-                      <span className="text-4xl font-display text-[#D4AF37]">${tier.price}</span>
-                      <span className="text-[#666660]">/ {tier.period}</span>
+                      <span className="text-4xl font-display text-[#B8962F]">${tier.price}</span>
+                      <span className="text-[#8A8A80]">/ {tier.period}</span>
                     </div>
 
                     <ul className="space-y-3 mb-6 flex-1">
                       {tier.features.map((feature, index) => (
                         <li key={index} className="flex items-start gap-2 text-sm">
                           <Check className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
-                            config.color === 'cyan' ? 'text-[#00F0FF]' : 'text-[#D4AF37]'
+                            config.color === 'navy' ? 'text-[#1A365D]' : 'text-[#B8962F]'
                           }`} />
-                          <span className="text-[#A8A8A0]">{feature}</span>
+                          <span className="text-[#4A4A45]">{feature}</span>
                         </li>
                       ))}
                     </ul>
@@ -308,37 +309,37 @@ const Pricing = () => {
 
           {/* Features Comparison */}
           <div className="mt-20">
-            <h2 className="font-display text-2xl text-[#F5F5F0] text-center mb-8">
+            <h2 className="font-display text-2xl text-[#1A1A18] text-center mb-8">
               What's Included
             </h2>
             
             <div className="grid md:grid-cols-3 gap-6">
-              <div className="card-obsidian rounded-lg p-6">
-                <div className="w-12 h-12 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center mb-4">
-                  <Eye className="w-6 h-6 text-[#D4AF37]" />
+              <div className="feature-card rounded-lg p-6">
+                <div className="w-12 h-12 rounded-lg bg-[#B8962F]/10 flex items-center justify-center mb-4">
+                  <Eye className="w-6 h-6 text-[#B8962F]" />
                 </div>
-                <h3 className="font-display text-lg text-[#F5F5F0] mb-2">Narrative Experience</h3>
-                <p className="text-sm text-[#A8A8A0]">
+                <h3 className="font-display text-lg text-[#1A1A18] mb-2">Narrative Experience</h3>
+                <p className="text-sm text-[#4A4A45]">
                   Immersive cinematic journeys through art history. Witness artists' studios, historical moments, and the stories behind masterpieces.
                 </p>
               </div>
 
-              <div className="card-obsidian rounded-lg p-6">
-                <div className="w-12 h-12 rounded-lg bg-[#00F0FF]/10 flex items-center justify-center mb-4">
-                  <Fingerprint className="w-6 h-6 text-[#00F0FF]" />
+              <div className="feature-card rounded-lg p-6">
+                <div className="w-12 h-12 rounded-lg bg-[#1A365D]/10 flex items-center justify-center mb-4">
+                  <Fingerprint className="w-6 h-6 text-[#1A365D]" />
                 </div>
-                <h3 className="font-display text-lg text-[#F5F5F0] mb-2">AI Forensics</h3>
-                <p className="text-sm text-[#A8A8A0]">
+                <h3 className="font-display text-lg text-[#1A1A18] mb-2">AI Forensics</h3>
+                <p className="text-sm text-[#4A4A45]">
                   Emaira AI analyzes pigments, signatures, and canvas weave to reveal authentication DNA and hidden details.
                 </p>
               </div>
 
-              <div className="card-obsidian rounded-lg p-6">
-                <div className="w-12 h-12 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center mb-4">
-                  <Palette className="w-6 h-6 text-[#D4AF37]" />
+              <div className="feature-card rounded-lg p-6">
+                <div className="w-12 h-12 rounded-lg bg-[#B8962F]/10 flex items-center justify-center mb-4">
+                  <Palette className="w-6 h-6 text-[#B8962F]" />
                 </div>
-                <h3 className="font-display text-lg text-[#F5F5F0] mb-2">Knowledge Dashboard</h3>
-                <p className="text-sm text-[#A8A8A0]">
+                <h3 className="font-display text-lg text-[#1A1A18] mb-2">Knowledge Dashboard</h3>
+                <p className="text-sm text-[#4A4A45]">
                   Track your learned forensic markers, build expertise, and train yourself to see what experts see.
                 </p>
               </div>
@@ -347,11 +348,11 @@ const Pricing = () => {
 
           {/* Trust Badges */}
           <div className="mt-16 text-center">
-            <p className="text-[#666660] text-sm mb-4">Trusted payment processing</p>
+            <p className="text-[#8A8A80] text-sm mb-4">Trusted payment processing</p>
             <div className="flex justify-center gap-8 items-center opacity-50">
-              <span className="text-[#A8A8A0] font-mono text-sm">STRIPE</span>
-              <span className="text-[#A8A8A0] font-mono text-sm">RAZORPAY</span>
-              <span className="text-[#A8A8A0] font-mono text-sm">256-BIT SSL</span>
+              <span className="text-[#4A4A45] font-mono text-sm">STRIPE</span>
+              <span className="text-[#4A4A45] font-mono text-sm">RAZORPAY</span>
+              <span className="text-[#4A4A45] font-mono text-sm">256-BIT SSL</span>
             </div>
           </div>
         </div>
