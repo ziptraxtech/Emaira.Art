@@ -887,10 +887,12 @@ async def search_met_museum(
             if department_id:
                 params["departmentId"] = str(department_id)
             
+            headers = {"User-Agent": "Emaira.Art/1.0 (Art Gallery Application)"}
             search_url = f"{MET_MUSEUM_API_BASE}/search"
-            response = await client_http.get(search_url, params=params, timeout=30.0)
+            response = await client_http.get(search_url, params=params, headers=headers, timeout=30.0)
             
             if response.status_code != 200:
+                logger.warning(f"Met Museum API returned {response.status_code}")
                 raise HTTPException(status_code=response.status_code, detail="Met Museum API error")
             
             data = response.json()
@@ -903,7 +905,7 @@ async def search_met_museum(
             artworks = []
             for obj_id in object_ids[:limit]:
                 try:
-                    obj_response = await client_http.get(f"{MET_MUSEUM_API_BASE}/objects/{obj_id}", timeout=10.0)
+                    obj_response = await client_http.get(f"{MET_MUSEUM_API_BASE}/objects/{obj_id}", headers=headers, timeout=10.0)
                     if obj_response.status_code == 200:
                         obj_data = obj_response.json()
                         artworks.append({
