@@ -5,48 +5,48 @@
 @tailwind utilities;
 
 :root {
-    /* Emaira.Art - Obsidian Vault Color System */
-    --obsidian-deep: #050505;
-    --obsidian-surface: #0a0a0a;
-    --obsidian-elevated: #111111;
-    --obsidian-border: #1a1a1a;
+    /* Emaira.Art - Light Luxury Color System */
+    --ivory-deep: #FAFAF8;
+    --ivory-surface: #F5F5F0;
+    --ivory-elevated: #FFFFFF;
+    --ivory-border: #E8E8E0;
     
-    --gold-primary: #D4AF37;
-    --gold-light: #E8C547;
-    --gold-dark: #B8962F;
-    --gold-muted: rgba(212, 175, 55, 0.15);
+    --gold-primary: #B8962F;
+    --gold-light: #D4AF37;
+    --gold-dark: #8B7224;
+    --gold-muted: rgba(184, 150, 47, 0.1);
     
-    --cyan-forensic: #00F0FF;
-    --cyan-glow: rgba(0, 240, 255, 0.2);
-    --cyan-muted: rgba(0, 240, 255, 0.1);
+    --navy-forensic: #1A365D;
+    --navy-glow: rgba(26, 54, 93, 0.15);
+    --navy-muted: rgba(26, 54, 93, 0.08);
     
-    --ivory-text: #F5F5F0;
-    --ivory-muted: #A8A8A0;
-    --ivory-subtle: #666660;
+    --obsidian-text: #1A1A18;
+    --obsidian-muted: #4A4A45;
+    --obsidian-subtle: #8A8A80;
     
-    --crimson-accent: #8B0000;
-    --emerald-accent: #1B4D3E;
+    --burgundy-accent: #722F37;
+    --emerald-accent: #2D5A47;
     
-    /* Shadcn overrides for dark luxury */
-    --background: 0 0% 2%;
-    --foreground: 45 5% 95%;
-    --card: 0 0% 4%;
-    --card-foreground: 45 5% 95%;
-    --popover: 0 0% 4%;
-    --popover-foreground: 45 5% 95%;
-    --primary: 43 74% 49%;
-    --primary-foreground: 0 0% 2%;
-    --secondary: 0 0% 7%;
-    --secondary-foreground: 45 5% 95%;
-    --muted: 0 0% 10%;
-    --muted-foreground: 45 5% 60%;
-    --accent: 186 100% 50%;
-    --accent-foreground: 0 0% 2%;
-    --destructive: 0 100% 27%;
-    --destructive-foreground: 45 5% 95%;
-    --border: 0 0% 10%;
-    --input: 0 0% 10%;
-    --ring: 43 74% 49%;
+    /* Shadcn overrides for light luxury */
+    --background: 45 10% 98%;
+    --foreground: 45 10% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 45 10% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 45 10% 10%;
+    --primary: 43 60% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 45 10% 94%;
+    --secondary-foreground: 45 10% 10%;
+    --muted: 45 10% 94%;
+    --muted-foreground: 45 10% 40%;
+    --accent: 215 56% 25%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 60% 40%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 45 10% 88%;
+    --input: 45 10% 88%;
+    --ring: 43 60% 45%;
     --radius: 0.25rem;
 }
 
@@ -62,8 +62,8 @@ html {
 
 body {
     font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
-    background-color: var(--obsidian-deep);
-    color: var(--ivory-text);
+    background-color: var(--ivory-deep);
+    color: var(--obsidian-text);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     line-height: 1.6;
@@ -91,44 +91,45 @@ body {
     background-clip: text;
 }
 
-/* Cyan Forensic Glow */
-.text-cyan-glow {
-    color: var(--cyan-forensic);
-    text-shadow: 0 0 10px var(--cyan-glow), 0 0 20px var(--cyan-glow);
+/* Navy Forensic Text */
+.text-navy-accent {
+    color: var(--navy-forensic);
 }
 
-/* Glass Morphism */
-.glass-dark {
-    background: rgba(5, 5, 5, 0.85);
+/* Glass Morphism - Light */
+.glass-light {
+    background: rgba(255, 255, 255, 0.9);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--obsidian-border);
+    border: 1px solid var(--ivory-border);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
 }
 
 .glass-gold {
-    background: rgba(212, 175, 55, 0.05);
+    background: rgba(184, 150, 47, 0.05);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(212, 175, 55, 0.2);
+    border: 1px solid rgba(184, 150, 47, 0.15);
 }
 
 /* Card Styles */
-.card-obsidian {
-    background: var(--obsidian-surface);
-    border: 1px solid var(--obsidian-border);
+.card-ivory {
+    background: var(--ivory-elevated);
+    border: 1px solid var(--ivory-border);
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
 }
 
-.card-obsidian:hover {
+.card-ivory:hover {
     border-color: var(--gold-primary);
-    box-shadow: 0 0 40px rgba(212, 175, 55, 0.1);
+    box-shadow: 0 8px 40px rgba(184, 150, 47, 0.12);
     transform: translateY(-4px);
 }
 
 /* Button Styles */
 .btn-gold {
-    background: linear-gradient(135deg, var(--gold-primary) 0%, var(--gold-dark) 100%);
-    color: var(--obsidian-deep);
+    background: linear-gradient(135deg, var(--gold-light) 0%, var(--gold-primary) 100%);
+    color: white;
     font-weight: 600;
     padding: 12px 32px;
     border: none;
@@ -145,7 +146,7 @@ body {
     left: -100%;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
     transition: left 0.5s ease;
 }
 
@@ -154,14 +155,14 @@ body {
 }
 
 .btn-gold:hover {
-    box-shadow: 0 8px 32px rgba(212, 175, 55, 0.4);
+    box-shadow: 0 8px 32px rgba(184, 150, 47, 0.35);
     transform: translateY(-2px);
 }
 
 .btn-outline-gold {
     background: transparent;
     color: var(--gold-primary);
-    border: 1px solid var(--gold-primary);
+    border: 1.5px solid var(--gold-primary);
     padding: 12px 32px;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -169,32 +170,21 @@ body {
 
 .btn-outline-gold:hover {
     background: var(--gold-muted);
-    box-shadow: 0 0 20px rgba(212, 175, 55, 0.2);
+    box-shadow: 0 0 20px rgba(184, 150, 47, 0.15);
 }
 
 .btn-forensic {
-    background: transparent;
-    color: var(--cyan-forensic);
-    border: 1px solid var(--cyan-forensic);
+    background: var(--navy-forensic);
+    color: white;
+    border: none;
     padding: 12px 32px;
     cursor: pointer;
     transition: all 0.3s ease;
-    position: relative;
 }
 
-.btn-forensic::after {
-    content: '';
-    position: absolute;
-    inset: -2px;
-    background: var(--cyan-forensic);
-    opacity: 0;
-    filter: blur(10px);
-    transition: opacity 0.3s ease;
-    z-index: -1;
-}
-
-.btn-forensic:hover::after {
-    opacity: 0.3;
+.btn-forensic:hover {
+    background: #15294a;
+    box-shadow: 0 8px 24px rgba(26, 54, 93, 0.25);
 }
 
 /* Animation Classes */
@@ -215,8 +205,8 @@ body {
 }
 
 @keyframes pulse-gold {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.4); }
-    50% { box-shadow: 0 0 0 15px rgba(212, 175, 55, 0); }
+    0%, 100% { box-shadow: 0 0 0 0 rgba(184, 150, 47, 0.4); }
+    50% { box-shadow: 0 0 0 15px rgba(184, 150, 47, 0); }
 }
 
 @keyframes scan-line {
@@ -229,7 +219,7 @@ body {
 }
 
 .animate-shimmer {
-    background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.1), transparent);
+    background: linear-gradient(90deg, transparent, rgba(184, 150, 47, 0.08), transparent);
     background-size: 200% 100%;
     animation: shimmer 2s infinite;
 }
@@ -251,8 +241,8 @@ body {
     left: 0;
     right: 0;
     height: 2px;
-    background: var(--cyan-forensic);
-    box-shadow: 0 0 10px var(--cyan-forensic), 0 0 20px var(--cyan-forensic);
+    background: var(--navy-forensic);
+    box-shadow: 0 0 10px var(--navy-forensic);
     animation: scan-line 3s linear infinite;
     opacity: 0;
     transition: opacity 0.3s;
@@ -266,8 +256,8 @@ body {
 .vr-toggle {
     position: relative;
     display: flex;
-    background: var(--obsidian-elevated);
-    border: 1px solid var(--obsidian-border);
+    background: var(--ivory-surface);
+    border: 1px solid var(--ivory-border);
     border-radius: 9999px;
     padding: 4px;
 }
@@ -278,10 +268,11 @@ body {
     cursor: pointer;
     transition: all 0.3s ease;
     z-index: 1;
+    color: var(--obsidian-muted);
 }
 
 .vr-toggle-option.active {
-    color: var(--obsidian-deep);
+    color: white;
 }
 
 .vr-toggle-indicator {
@@ -297,7 +288,7 @@ body {
 }
 
 .vr-toggle-indicator.forensic {
-    background: var(--cyan-forensic);
+    background: var(--navy-forensic);
 }
 
 /* Scrollbar Styling */
@@ -307,11 +298,11 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--obsidian-deep);
+    background: var(--ivory-surface);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--obsidian-border);
+    background: var(--ivory-border);
     border-radius: 4px;
 }
 
@@ -322,7 +313,7 @@ body {
 /* Selection */
 ::selection {
     background: var(--gold-muted);
-    color: var(--gold-light);
+    color: var(--gold-dark);
 }
 
 /* Focus States */
@@ -334,9 +325,9 @@ body {
 /* Hero Section Specific */
 .hero-gradient {
     background: 
-        radial-gradient(ellipse at 20% 0%, rgba(212, 175, 55, 0.08) 0%, transparent 50%),
-        radial-gradient(ellipse at 80% 100%, rgba(0, 240, 255, 0.05) 0%, transparent 50%),
-        var(--obsidian-deep);
+        radial-gradient(ellipse at 20% 0%, rgba(184, 150, 47, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 100%, rgba(26, 54, 93, 0.04) 0%, transparent 50%),
+        var(--ivory-deep);
 }
 
 /* Artwork Card Hover Effect */
@@ -349,7 +340,7 @@ body {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, transparent 0%, rgba(5,5,5,0.9) 100%);
+    background: linear-gradient(180deg, transparent 0%, rgba(26, 26, 24, 0.85) 100%);
     opacity: 0;
     transition: opacity 0.4s ease;
     z-index: 1;
@@ -377,8 +368,8 @@ body {
 /* Pricing Tier Cards */
 .tier-card {
     position: relative;
-    background: var(--obsidian-surface);
-    border: 1px solid var(--obsidian-border);
+    background: var(--ivory-elevated);
+    border: 1px solid var(--ivory-border);
     transition: all 0.4s ease;
 }
 
@@ -393,18 +384,18 @@ body {
     background: linear-gradient(135deg, var(--gold-primary), transparent, var(--gold-primary));
     border-radius: inherit;
     z-index: -1;
-    opacity: 0.3;
+    opacity: 0.2;
 }
 
 .tier-card:hover {
     transform: translateY(-8px);
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
 }
 
 /* Navigation */
 .nav-link {
     position: relative;
-    color: var(--ivory-muted);
+    color: var(--obsidian-muted);
     transition: color 0.3s ease;
 }
 
@@ -414,7 +405,7 @@ body {
     bottom: -4px;
     left: 0;
     width: 0;
-    height: 1px;
+    height: 1.5px;
     background: var(--gold-primary);
     transition: width 0.3s ease;
 }
@@ -428,27 +419,27 @@ body {
 }
 
 /* Input Styles */
-.input-dark {
-    background: var(--obsidian-elevated);
-    border: 1px solid var(--obsidian-border);
-    color: var(--ivory-text);
+.input-light {
+    background: var(--ivory-elevated);
+    border: 1px solid var(--ivory-border);
+    color: var(--obsidian-text);
     padding: 12px 16px;
     transition: all 0.3s ease;
 }
 
-.input-dark:focus {
+.input-light:focus {
     border-color: var(--gold-primary);
     box-shadow: 0 0 0 3px var(--gold-muted);
 }
 
-.input-dark::placeholder {
-    color: var(--ivory-subtle);
+.input-light::placeholder {
+    color: var(--obsidian-subtle);
 }
 
 /* Badge Styles */
 .badge-gold {
     background: var(--gold-muted);
-    color: var(--gold-primary);
+    color: var(--gold-dark);
     padding: 4px 12px;
     font-size: 0.75rem;
     font-weight: 600;
@@ -457,8 +448,8 @@ body {
 }
 
 .badge-forensic {
-    background: var(--cyan-muted);
-    color: var(--cyan-forensic);
+    background: var(--navy-muted);
+    color: var(--navy-forensic);
     padding: 4px 12px;
     font-size: 0.75rem;
     font-weight: 600;
@@ -467,10 +458,59 @@ body {
 }
 
 /* Loading States */
-.skeleton-dark {
-    background: linear-gradient(90deg, var(--obsidian-elevated) 25%, var(--obsidian-border) 50%, var(--obsidian-elevated) 75%);
+.skeleton-light {
+    background: linear-gradient(90deg, var(--ivory-surface) 25%, var(--ivory-border) 50%, var(--ivory-surface) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
+}
+
+/* Section Divider */
+.section-divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--ivory-border), transparent);
+}
+
+/* Feature Card */
+.feature-card {
+    background: var(--ivory-elevated);
+    border: 1px solid var(--ivory-border);
+    transition: all 0.3s ease;
+}
+
+.feature-card:hover {
+    border-color: var(--gold-primary);
+    box-shadow: 0 12px 40px rgba(184, 150, 47, 0.1);
+}
+
+/* Timeline */
+.timeline-item {
+    position: relative;
+    padding-left: 24px;
+}
+
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gold-primary);
+}
+
+.timeline-item::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 20px;
+    bottom: -12px;
+    width: 2px;
+    background: var(--ivory-border);
+}
+
+.timeline-item:last-child::after {
+    display: none;
 }
 
 /* Responsive Typography */
