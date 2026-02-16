@@ -316,8 +316,39 @@ async def require_admin(request: Request) -> User:
     user = await get_current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    if user.role not in ["admin", "curator"]:
+    # Check for any admin role
+    admin_roles = ["admin", "super_admin", "content_curator", "marketing_admin", "support_admin", "curator"]
+    if user.role not in admin_roles:
         raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+async def require_permission(request: Request, permission: str) -> User:
+    """Check if user has a specific permission"""
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    # Super admin and legacy admin have all permissions
+    if user.role in ["admin", "super_admin"]:
+        return user
+    
+    # Check role-based permissions
+    if has_permission(user.role, permission):
+        return user
+    
+    # Check custom permissions
+    if permission in (user.admin_permissions or []):
+        return user
+    
+    raise HTTPException(status_code=403, detail=f"Permission '{permission}' required")
+
+async def require_super_admin(request: Request) -> User:
+    """Only super_admin or legacy admin can access"""
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if user.role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Super Admin access required")
     return user
 
 async def log_activity(user_id: str, activity_type: str, details: Dict[str, Any] = {}):
