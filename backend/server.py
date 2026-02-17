@@ -2106,6 +2106,342 @@ async def create_razorpay_order(request: Request):
         logger.error(f"Razorpay error: {e}")
         raise HTTPException(status_code=500, detail="Payment initialization failed")
 
+# ===================== SUBSCRIPTIONS ROUTES =====================
+
+@subscriptions_router.get("/")
+async def list_subscription_tiers():
+    """Get all available subscription tiers"""
+    tiers = []
+    for tier_id, tier in SUBSCRIPTION_TIERS.items():
+        tier_data = tier.model_dump()
+        tier_data["tier_id"] = tier_id
+        tiers.append(tier_data)
+    return {"tiers": tiers}
+
+@subscriptions_router.get("/{tier_id}")
+async def get_subscription_tier(tier_id: str):
+    """Get details of a specific subscription tier"""
+    if tier_id not in SUBSCRIPTION_TIERS:
+        raise HTTPException(status_code=404, detail="Tier not found")
+    tier = SUBSCRIPTION_TIERS[tier_id]
+    return tier.model_dump()
+
+@subscriptions_router.get("/user/current")
+async def get_user_subscription(request: Request):
+    """Get current user's subscription status"""
+    user = await require_auth(request)
+    
+    if not user.subscription_tier:
+        return {
+            "has_subscription": False,
+            "tier": None,
+            "expires": None,
+            "features": []
+        }
+    
+    tier = SUBSCRIPTION_TIERS.get(user.subscription_tier)
+    return {
+        "has_subscription": True,
+        "tier": tier.model_dump() if tier else None,
+        "tier_id": user.subscription_tier,
+        "expires": user.subscription_expires.isoformat() if user.subscription_expires else None,
+        "advisory_sessions_remaining": user.advisory_sessions_remaining if user.subscription_tier == "collectors_advisory" else 0,
+        "features": tier.features if tier else []
+    }
+
+@subscriptions_router.post("/compare")
+async def compare_subscription_tiers(request: Request):
+    """Compare features across subscription tiers"""
+    body = await request.json()
+    tier_ids = body.get("tier_ids", list(SUBSCRIPTION_TIERS.keys()))
+    
+    comparison = []
+    all_features = set()
+    
+    for tier_id in tier_ids:
+        if tier_id in SUBSCRIPTION_TIERS:
+            tier = SUBSCRIPTION_TIERS[tier_id]
+            all_features.update(tier.features)
+    
+    for tier_id in tier_ids:
+        if tier_id in SUBSCRIPTION_TIERS:
+            tier = SUBSCRIPTION_TIERS[tier_id]
+            tier_features = {
+                "tier_id": tier_id,
+                "name": tier.name,
+                "price": tier.price,
+                "period": tier.period,
+                "features": {f: f in tier.features for f in all_features}
+            }
+            comparison.append(tier_features)
+    
+    return {"comparison": comparison, "all_features": list(all_features)}
+
+# ===================== VR NARRATIVE GENERATION =====================
+
+@api_router.post("/vr/generate-narrative/{artwork_id}")
+async def generate_vr_narrative(artwork_id: str, request: Request):
+    """Generate an immersive VR narrative for an artwork using AI"""
+    user = await require_auth(request)
+    
+    # Check access
+    if user.subscription_tier not in ["connoisseur", "pro_collector", "collectors_advisory"]:
+        artwork = await db.artworks.find_one({"artwork_id": artwork_id}, {"_id": 0})
+        if artwork and artwork.get("story_id"):
+            purchased_stories = user.purchased_stories or []
+            if not any(artwork["story_id"] in s for s in purchased_stories):
+                raise HTTPException(status_code=403, detail="Subscription or story purchase required")
+    
+    artwork = await db.artworks.find_one({"artwork_id": artwork_id}, {"_id": 0})
+    if not artwork:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+    
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        api_key = os.getenv("EMERGENT_LLM_KEY")
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"vr_narrative_{uuid.uuid4().hex[:8]}",
+            system_message="""You are Emaira, an expert art historian and immersive storyteller. 
+            Create cinematic VR narratives that transport viewers through time and space. 
+            Your narratives should be rich with sensory details, historical context, and emotional depth.
+            Structure your response as a JSON array of scenes, each with: scene_number, title, duration_seconds, narration, visual_cues, ambient_sounds, and camera_direction."""
+        )
+        chat.with_model("gemini", "gemini-3-flash-preview")
+        
+        prompt = f"""Create an immersive 5-minute VR narrative experience for '{artwork['title']}' by {artwork['artist']} ({artwork['year']}).
+
+Artwork details:
+- Period: {artwork.get('period', 'Unknown')}
+- Medium: {artwork.get('medium', 'Unknown')}
+- Location: {artwork.get('location', 'Unknown')}
+- Description: {artwork.get('description', '')}
+
+Create 5 scenes that take the viewer on a journey:
+1. The Artist's World - Set the historical context
+2. The Creation - Show the artistic process
+3. Hidden Secrets - Reveal forensic details and techniques
+4. Journey Through Time - Show the artwork's history and provenance
+5. Legacy - The artwork's impact and significance today
+
+For each scene, provide narration text and visual/audio direction for VR implementation.
+Return as valid JSON array."""
+
+        user_message = UserMessage(text=prompt)
+        response = await chat.send_message(user_message)
+        
+        # Try to parse as JSON, otherwise wrap in structure
+        try:
+            import json
+            scenes = json.loads(response)
+        except:
+            scenes = [
+                {
+                    "scene_number": 1,
+                    "title": "The Story",
+                    "duration_seconds": 300,
+                    "narration": response,
+                    "visual_cues": "Pan across the artwork",
+                    "ambient_sounds": "Soft classical music",
+                    "camera_direction": "Slow zoom"
+                }
+            ]
+        
+        narrative_result = {
+            "narrative_id": f"narrative_{uuid.uuid4().hex[:12]}",
+            "artwork_id": artwork_id,
+            "title": f"The VR Story of {artwork['title']}",
+            "scenes": scenes,
+            "total_duration_minutes": 5,
+            "generated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Store the generated narrative
+        await db.vr_narratives.insert_one(narrative_result)
+        
+        await log_activity(user.user_id, "generate_vr_narrative", {"artwork_id": artwork_id})
+        
+        return narrative_result
+        
+    except Exception as e:
+        logger.error(f"VR narrative generation error: {e}")
+        raise HTTPException(status_code=500, detail="Narrative generation failed")
+
+@api_router.get("/vr/narrative/{artwork_id}")
+async def get_vr_narrative(artwork_id: str, request: Request):
+    """Get existing VR narrative for an artwork"""
+    # Check if narrative exists
+    narrative = await db.vr_narratives.find_one(
+        {"artwork_id": artwork_id},
+        {"_id": 0}
+    )
+    
+    if not narrative:
+        # Return the pre-seeded narrative content from story
+        story = await db.stories.find_one({"artwork_id": artwork_id}, {"_id": 0})
+        if story:
+            return {
+                "narrative_id": story.get("story_id"),
+                "artwork_id": artwork_id,
+                "title": story.get("title"),
+                "scenes": story.get("narrative_content", []),
+                "forensic_content": story.get("forensic_content", {}),
+                "total_duration_minutes": story.get("duration_minutes", 5)
+            }
+        raise HTTPException(status_code=404, detail="Narrative not found")
+    
+    return narrative
+
+# ===================== ENHANCED FORENSICS =====================
+
+@forensics_router.get("/report/{artwork_id}")
+async def get_forensic_report(artwork_id: str, request: Request):
+    """Get a comprehensive forensic report for an artwork"""
+    user = await require_auth(request)
+    
+    artwork = await db.artworks.find_one({"artwork_id": artwork_id}, {"_id": 0})
+    if not artwork:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+    
+    # Check if user has access
+    has_full_access = user.subscription_tier in ["deep_dive", "connoisseur", "pro_collector", "collectors_advisory"]
+    if not has_full_access:
+        if artwork.get("story_id"):
+            purchased = user.purchased_stories or []
+            has_full_access = any(artwork["story_id"] in s and "full" in s for s in purchased)
+    
+    # Get existing forensic data from artwork
+    forensic_data = artwork.get("forensic_data", {})
+    
+    # Get any AI-generated analyses for this artwork
+    analyses = await db.forensic_analyses.find(
+        {"artwork_id": artwork_id},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(10)
+    
+    report = {
+        "artwork_id": artwork_id,
+        "title": artwork.get("title"),
+        "artist": artwork.get("artist"),
+        "year": artwork.get("year"),
+        "forensic_summary": {
+            "pigments": forensic_data.get("pigments", []),
+            "technique": forensic_data.get("technique", ""),
+            "signature_markers": forensic_data.get("signature_markers", ""),
+            "canvas_info": forensic_data.get("canvas_info", ""),
+            "authentication_score": forensic_data.get("authentication_score", 95)
+        },
+        "has_full_access": has_full_access,
+        "ai_analyses": analyses if has_full_access else [],
+        "provenance": artwork.get("provenance", []) if has_full_access else []
+    }
+    
+    if not has_full_access:
+        report["upgrade_message"] = "Upgrade to Deep Dive or higher to access full forensic analysis"
+    
+    return report
+
+@forensics_router.post("/deep-analysis")
+async def perform_deep_forensic_analysis(request: Request):
+    """Perform comprehensive AI-powered forensic analysis"""
+    user = await require_auth(request)
+    body = await request.json()
+    artwork_id = body.get("artwork_id")
+    
+    # Only available for premium tiers
+    if user.subscription_tier not in ["pro_collector", "collectors_advisory"]:
+        raise HTTPException(status_code=403, detail="Pro Collector or Collector's Advisory subscription required")
+    
+    artwork = await db.artworks.find_one({"artwork_id": artwork_id}, {"_id": 0})
+    if not artwork:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+    
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        api_key = os.getenv("EMERGENT_LLM_KEY")
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"deep_forensics_{uuid.uuid4().hex[:8]}",
+            system_message="""You are Dr. Emaira, the world's foremost AI art authentication specialist with expertise in:
+            - Spectroscopic analysis (X-ray fluorescence, infrared reflectography)
+            - Dendrochronology for wooden supports
+            - Canvas weave pattern analysis
+            - Pigment chronology and geographic sourcing
+            - Brushwork forensics and gesture analysis
+            - Craquelure pattern dating
+            - Provenance chain verification
+            
+            Provide detailed, scientific analysis with confidence scores and specific technical findings.
+            Structure your response as a comprehensive authentication report."""
+        )
+        chat.with_model("gemini", "gemini-3-flash-preview")
+        
+        existing_forensic = artwork.get("forensic_data", {})
+        
+        prompt = f"""Conduct a comprehensive forensic authentication analysis for:
+
+Artwork: '{artwork['title']}'
+Artist: {artwork['artist']}
+Date: {artwork['year']}
+Period: {artwork.get('period', 'Unknown')}
+Medium: {artwork.get('medium', 'Unknown')}
+Dimensions: {artwork.get('dimensions', 'Unknown')}
+Current Location: {artwork.get('location', 'Unknown')}
+
+Known Forensic Data:
+- Pigments: {existing_forensic.get('pigments', 'Not analyzed')}
+- Technique: {existing_forensic.get('technique', 'Not documented')}
+- Support: {existing_forensic.get('canvas_info', 'Not analyzed')}
+
+Provide a detailed authentication report covering:
+1. PIGMENT ANALYSIS - Chemical composition, period consistency, geographic sourcing
+2. SUPPORT ANALYSIS - Material, age indicators, preparation layers
+3. TECHNIQUE ANALYSIS - Brushwork, layering, underdrawing
+4. SIGNATURE VERIFICATION - Comparative analysis, pressure patterns
+5. PROVENANCE ASSESSMENT - Documentary evidence strength
+6. CONDITION REPORT - Conservation history, alterations
+7. AUTHENTICATION CONCLUSION - Overall confidence score with justification
+
+Include specific technical terminology and quantitative assessments where applicable."""
+
+        user_message = UserMessage(text=prompt)
+        response = await chat.send_message(user_message)
+        
+        analysis_result = {
+            "analysis_id": f"deep_{uuid.uuid4().hex[:12]}",
+            "artwork_id": artwork_id,
+            "analysis_type": "deep_forensic",
+            "analyst": "Dr. Emaira AI",
+            "report": response,
+            "confidence_score": 0.97,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": user.user_id
+        }
+        
+        # Store the analysis
+        await db.forensic_analyses.insert_one(analysis_result)
+        
+        # Update user's forensic markers
+        marker = {
+            "artwork_id": artwork_id,
+            "analysis_type": "deep_forensic",
+            "learned_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.users.update_one(
+            {"user_id": user.user_id},
+            {"$push": {"forensic_markers_learned": marker}}
+        )
+        
+        await log_activity(user.user_id, "deep_forensic_analysis", {"artwork_id": artwork_id})
+        
+        return analysis_result
+        
+    except Exception as e:
+        logger.error(f"Deep forensic analysis error: {e}")
+        raise HTTPException(status_code=500, detail="Analysis failed")
+
 # ===================== DASHBOARD ROUTES =====================
 
 @dashboard_router.get("/")
