@@ -15,10 +15,10 @@ Build "Emaira.Art: The VR Storyteller plus AI Art Forensics" - a high-end VR Sto
 - VR Art Story Experience with Narrative & Forensic views
 - AI Forensics Analysis (Gemini 3 Flash)
 - AI Visualization Generation (Gemini Nano Banana)
-- Subscription tiers: Short Story ($9.99), Deep Dive ($49), Connoisseur ($249/yr), Pro Collector ($999/yr)
+- Subscription tiers: Short Story ($9.99), Deep Dive ($49), Connoisseur ($249/yr), Pro Collector ($999/yr), Collector's Advisory ($2499/yr)
 - Dual payment: Stripe + Razorpay
 - Google OAuth authentication (Emergent-managed)
-- Dark luxury "Vogue" aesthetic
+- Light luxury "Vogue" aesthetic
 
 ## Architecture
 - **Frontend**: React + Tailwind CSS + Shadcn/UI
@@ -26,11 +26,25 @@ Build "Emaira.Art: The VR Storyteller plus AI Art Forensics" - a high-end VR Sto
 - **AI**: Gemini 3 Flash (text analysis), Gemini Nano Banana (image generation)
 - **Payments**: Stripe (international), Razorpay (India)
 - **Auth**: Emergent Google OAuth
+- **Email**: Resend (for campaigns)
+- **Museum API**: The Met Museum Open Access API
 
-## What's Been Implemented (Feb 16, 2026)
-### Backend
+## What's Been Implemented
+
+### Feb 17, 2026 - P0 Business Upgrades Complete
+- [x] **Admin Roles System** (Super Admin, Content Curator, Marketing Admin, Support Admin)
+- [x] **Email Marketing with Resend** - Campaign creation, templates, send functionality
+- [x] **Direct Artwork Image Uploads** - Admin can upload artworks with base64 images
+- [x] **The Met Museum API Integration** - Search, view, and import artworks
+- [x] **Collector's Advisory Tier** ($2499/year) - Premium tier with advisory sessions
+- [x] **Modern Art Categories** - Added 10 contemporary/modern artworks (total 38)
+- [x] **Subscriptions API** - Public endpoint to list all subscription tiers
+- [x] **VR Narrative Generation** - AI-generated immersive narratives for artworks
+- [x] **Enhanced Forensics** - Deep analysis reports, forensic reports endpoint
+
+### Feb 16, 2026 - Initial Build
 - [x] User authentication (Google OAuth via Emergent)
-- [x] Artworks CRUD endpoints - **20 world masterpieces seeded**
+- [x] Artworks CRUD endpoints - **38 masterpieces seeded**
 - [x] Stories CRUD endpoints - **Full narrative and forensic content**
 - [x] AI Forensics analysis endpoint (Gemini integration)
 - [x] AI Visualization generation endpoint
@@ -39,84 +53,104 @@ Build "Emaira.Art: The VR Storyteller plus AI Art Forensics" - a high-end VR Sto
 - [x] Subscription tiers management
 - [x] User dashboard data endpoints
 - [x] Knowledge tracking for forensic markers
-- [x] **NEW** CRM System:
-  - User management (CRUD, search, filter, pagination)
-  - User activity tracking (login, purchases, views, analysis)
-  - Analytics dashboard (revenue, users, subscriptions)
-  - User segments (high_value, subscribers, free_users, etc.)
-  - CRM notes system
-  - User detail profiles with stats
-
-### Frontend
-- [x] Landing page with hero, features, featured artworks
-- [x] Gallery page with search/filter - **20 artworks displayed**
-- [x] Story detail page with purchase options
-- [x] Pricing page with tier comparison
+- [x] CRM System with analytics, user management, activity tracking
+- [x] Landing, Gallery, Pricing, Story Detail, Dashboard pages
 - [x] VR Experience viewer with Narrative/Forensic toggle
-- [x] User dashboard with stories & knowledge tracking
-- [x] Payment success/failure handling
-- [x] Google OAuth callback handling
-- [x] About Us page with team, mission, and values sections
-- [x] Our Technology page with AI forensics features deep-dive
-- [x] Events page with calendar, upcoming events, and past recordings
-- [x] **NEW** CRM Dashboard (/crm) with:
-  - Overview tab (stats, segments, subscription breakdown)
-  - Users tab (paginated list, search, filters, detail modal)
-  - Activity tab (real-time activity feed)
-- [x] Light Luxury Vogue theme (Bodoni Moda, Manrope, Space Mono fonts)
-- [x] Ivory (#FAFAF8), Gold (#B8962F) and Navy (#1A365D) color palette
+- [x] About Us, Our Technology, Events pages
+- [x] Light Luxury Vogue theme
 
-### Artworks Collection (20 Masterpieces)
-1. Mona Lisa - Leonardo da Vinci
-2. The Starry Night - Vincent van Gogh
-3. Girl with a Pearl Earring - Johannes Vermeer
-4. The Persistence of Memory - Salvador Dalí
-5. The Birth of Venus - Sandro Botticelli
-6. The Last Supper - Leonardo da Vinci
-7. Guernica - Pablo Picasso
-8. The Scream - Edvard Munch
-9. Water Lilies - Claude Monet
-10. The Night Watch - Rembrandt van Rijn
-11. American Gothic - Grant Wood
-12. The Kiss - Gustav Klimt
-13. Las Meninas - Diego Velázquez
-14. The Great Wave off Kanagawa - Katsushika Hokusai
-15. A Sunday on La Grande Jatte - Georges Seurat
-16. The Creation of Adam - Michelangelo
-17. Impression, Sunrise - Claude Monet
-18. Café Terrace at Night - Vincent van Gogh
-19. The Arnolfini Portrait - Jan van Eyck
-20. Nighthawks - Edward Hopper
+### Artworks Collection (38 Masterpieces)
 
-Each artwork includes:
-- Full provenance history
-- Forensic DNA (pigments, signature markers, canvas analysis, technique)
-- 5-scene narrative storyline
-- Authentication score
+**Classic Masterpieces (28):**
+Mona Lisa, The Starry Night, Girl with a Pearl Earring, The Persistence of Memory, The Birth of Venus, The Last Supper, Guernica, The Scream, Water Lilies, The Night Watch, American Gothic, The Kiss, Las Meninas, The Great Wave, A Sunday on La Grande Jatte, The Creation of Adam, Impression Sunrise, Café Terrace at Night, The Arnolfini Portrait, Nighthawks, Girl with Balloon, The Physical Impossibility of Death...
+
+**Modern & Contemporary Art (10):**
+1. Shot Sage Blue Marilyn - Andy Warhol (Pop Art)
+2. Untitled (Skull) - Jean-Michel Basquiat (Neo-Expressionism)
+3. A Bigger Splash - David Hockney (British Pop Art)
+4. Infinity Mirrored Room - Yayoi Kusama (Contemporary)
+5. COMPANION - KAWS (Street Art/Pop Surrealism)
+6. Sunflower Seeds - Ai Weiwei (Conceptual Art)
+7. Abstraktes Bild - Gerhard Richter (Abstract Art)
+8. Three Studies of Lucian Freud - Francis Bacon (Figurative Expressionism)
+9. Maman - Louise Bourgeois (Contemporary Sculpture)
+10. Cloud Gate - Anish Kapoor (Public Art)
+
+## Admin Roles & Permissions
+| Role | Permissions |
+|------|-------------|
+| Super Admin | Full access - manage users, admins, artworks, stories, campaigns, museums, payments, settings |
+| Content Curator | Manage artworks, stories, museums; view analytics |
+| Marketing Admin | Manage campaigns, view analytics, manage users |
+| Support Admin | Manage users, view analytics |
+
+## API Endpoints
+
+### Subscriptions
+- `GET /api/subscriptions/` - List all subscription tiers
+- `GET /api/subscriptions/{tier_id}` - Get tier details
+- `GET /api/subscriptions/user/current` - Get user's current subscription
+- `POST /api/subscriptions/compare` - Compare tier features
+
+### VR Narratives
+- `POST /api/vr/generate-narrative/{artwork_id}` - Generate AI narrative
+- `GET /api/vr/narrative/{artwork_id}` - Get existing narrative
+
+### Enhanced Forensics
+- `GET /api/forensics/report/{artwork_id}` - Get forensic report
+- `POST /api/forensics/deep-analysis` - Run deep AI analysis (Pro/Advisory only)
+
+### Museum Integration
+- `GET /api/museums/met/search?q={query}` - Search The Met Museum
+- `GET /api/museums/met/departments` - Get Met departments
+- `POST /api/museums/met/import/{object_id}` - Import artwork from Met
+
+### Email Campaigns
+- `GET /api/campaigns/` - List campaigns
+- `POST /api/campaigns/` - Create campaign
+- `POST /api/campaigns/{id}/send` - Send campaign
+- `GET /api/campaigns/templates` - Get email templates
+
+### Admin Roles
+- `GET /api/admin/roles` - Get role definitions
+- `POST /api/admin/assign-role/{user_id}` - Assign role
+- `GET /api/admin/users/admins` - List all admins
 
 ## Prioritized Backlog
 
-### P0 (Critical for MVP)
+### P0 (Critical) - COMPLETED ✅
 - [x] Core viewing experience
-- [x] Payment processing
+- [x] Payment processing  
 - [x] User authentication
 - [x] AI forensics integration
+- [x] Admin roles system
+- [x] Email marketing
+- [x] Museum API integration
+- [x] Modern art categories
+- [x] Collector's Advisory tier
 
-### P1 (Important)
-- [ ] VR headset integration (Apple Vision Pro, Meta Quest)
+### P1 (Important) - IN PROGRESS
+- [ ] VR headset SDK integration (Apple Vision Pro, Meta Quest)
 - [ ] Real artwork image database integration
-- [ ] Enhanced AI visualization overlays
-- [ ] Email notifications for purchases
+- [ ] Enhanced AI visualization overlays with actual image processing
+- [ ] Mobile-optimized VR experience
 
 ### P2 (Nice to Have)
 - [ ] Social sharing features
 - [ ] User reviews/ratings
 - [ ] Artwork comparison tool
-- [ ] Mobile-optimized VR experience
+- [ ] Multi-language support
+- [ ] Offline mode for VR experiences
 
 ## Next Tasks
-1. Add more artwork content and stories
-2. Implement VR headset SDK integration
-3. Enhanced AI forensic visualization overlays
-4. Add user notification system
-5. Implement analytics dashboard for admins
+1. VR Headset SDK Integration (Apple Vision Pro, Meta Quest)
+2. Enhanced AI Visualization with real-time image overlays
+3. Mobile VR optimization
+4. User notification system (purchase confirmations, subscription reminders)
+5. Analytics dashboard improvements
+
+## Technical Notes
+- Gemini API Key: Stored in backend/.env as GEMINI_API_KEY
+- Met Museum API: Free, public API (may occasionally return 403 due to rate limiting)
+- Resend Email: Requires RESEND_API_KEY in backend/.env to send actual emails
+- All admin features require authentication with appropriate role
