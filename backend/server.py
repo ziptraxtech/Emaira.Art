@@ -1796,6 +1796,7 @@ async def analyze_artwork(analysis_request: ForensicAnalysisRequest, request: Re
 
 @forensics_router.post("/generate-visualization")
 async def generate_forensic_visualization(analysis_request: ForensicAnalysisRequest, request: Request):
+    """Generate AI-powered forensic visualization overlay for an artwork"""
     user = await require_auth(request)
     
     artwork = await db.artworks.find_one({"artwork_id": analysis_request.artwork_id}, {"_id": 0})
@@ -1809,17 +1810,72 @@ async def generate_forensic_visualization(analysis_request: ForensicAnalysisRequ
         chat = LlmChat(
             api_key=api_key,
             session_id=f"viz_{uuid.uuid4().hex[:8]}",
-            system_message="You are an AI that generates artistic forensic visualizations."
+            system_message="""You are Dr. Emaira's Forensic Visualization System. 
+            Generate detailed, scientific visualization diagrams for art authentication analysis.
+            Create clear, professional visualizations with labeled sections and technical annotations."""
         )
-        chat.with_model("gemini", "gemini-3-pro-image-preview").with_params(modalities=["image", "text"])
+        chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
+        
+        forensic_data = artwork.get("forensic_data", {})
+        pigments = forensic_data.get("pigments", ["Unknown"])
+        technique = forensic_data.get("technique", "Unknown technique")
         
         viz_prompts = {
-            "pigment": f"Create a scientific pigment analysis visualization overlay for a {artwork['period']} painting, showing color composition with labeled sections highlighting pigment types. Style: forensic analysis diagram.",
-            "signature": f"Create an artistic signature authentication overlay visualization showing brushstroke analysis and pressure mapping. Style: high-tech forensic scan.",
-            "canvas": f"Create a canvas weave analysis visualization showing thread density mapping and material patterns. Style: scientific microscopy view."
+            "pigment": f"""Create a detailed pigment analysis visualization diagram for '{artwork['title']}' by {artwork['artist']} ({artwork['period']}).
+
+Show a color-coded heat map style diagram with:
+- Labeled sections for each pigment type: {', '.join(pigments) if isinstance(pigments, list) else pigments}
+- Chemical composition indicators
+- Period-authentic color palette markers
+- Authentication markers highlighted in cyan (#00F0FF)
+- Professional forensic diagram style with clean lines and labels
+- Dark background (#050505) with glowing analysis points
+- Include a legend showing pigment types and their locations
+
+Style: High-tech forensic analysis interface, scientific precision, museum-quality documentation.""",
+
+            "signature": f"""Create a signature authentication visualization for '{artwork['title']}' by {artwork['artist']}.
+
+Show a detailed brushstroke analysis diagram with:
+- Pressure mapping overlay showing stroke intensity
+- Directional flow lines indicating hand movement patterns
+- Comparison markers for authentic signature characteristics
+- Technique indicators: {technique}
+- Heat map of brush pressure (cyan to gold gradient)
+- Grid overlay for precise measurement
+- Authentication confidence zones marked
+
+Style: High-tech forensic scan interface, like an FBI document analysis report but for fine art.""",
+
+            "canvas": f"""Create a canvas weave analysis visualization for '{artwork['title']}' ({artwork['period']}).
+
+Show a microscopic-style canvas analysis with:
+- Thread density mapping with count indicators
+- Weave pattern structure visualization
+- Material composition zones (linen, cotton, hemp markers)
+- Age-related degradation patterns
+- Canvas preparation layers cross-section
+- Support structure: {forensic_data.get('canvas_info', 'Traditional stretched canvas')}
+- Fiber direction indicators
+- Dating markers based on weave characteristics
+
+Style: Scientific microscopy view, textile forensics, professional authentication documentation.""",
+
+            "full": f"""Create a comprehensive forensic analysis visualization for '{artwork['title']}' by {artwork['artist']} ({artwork['year']}).
+
+Combine all analysis types in a professional dashboard layout:
+- Top section: Pigment heat map
+- Middle section: Brushstroke analysis
+- Bottom section: Canvas structure
+- Side panel: Authentication score gauge
+- Technical annotations throughout
+- Period: {artwork['period']}
+- Medium: {artwork.get('medium', 'Unknown')}
+
+Style: High-end museum authentication report, combining scientific precision with elegant design."""
         }
         
-        prompt = viz_prompts.get(analysis_request.analysis_type, viz_prompts["pigment"])
+        prompt = viz_prompts.get(analysis_request.analysis_type, viz_prompts["full"])
         user_message = UserMessage(text=prompt)
         text, images = await chat.send_message_multimodal_response(user_message)
         
@@ -1829,24 +1885,51 @@ async def generate_forensic_visualization(analysis_request: ForensicAnalysisRequ
             image_id = f"viz_{uuid.uuid4().hex[:12]}"
             await db.generated_images.insert_one({
                 "image_id": image_id,
-                "data": img_data['data'][:100] + "...",
+                "artwork_id": analysis_request.artwork_id,
+                "analysis_type": analysis_request.analysis_type,
+                "data": img_data['data'][:50] + "...",  # Preview only
                 "full_data": img_data['data'],
                 "mime_type": img_data['mime_type'],
+                "generated_by": user.user_id,
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
             image_url = f"/api/forensics/image/{image_id}"
         
+        # Log the visualization generation
+        await log_activity(user.user_id, "generate_visualization", {
+            "artwork_id": analysis_request.artwork_id,
+            "analysis_type": analysis_request.analysis_type
+        })
+        
         return {
             "visualization_id": f"viz_{uuid.uuid4().hex[:12]}",
             "artwork_id": analysis_request.artwork_id,
+            "artwork_title": artwork['title'],
             "analysis_type": analysis_request.analysis_type,
             "image_url": image_url,
-            "description": text
+            "description": text,
+            "generated_at": datetime.now(timezone.utc).isoformat()
         }
         
     except Exception as e:
         logger.error(f"Visualization generation error: {e}")
-        raise HTTPException(status_code=500, detail="Visualization generation failed")
+        raise HTTPException(status_code=500, detail=f"Visualization generation failed: {str(e)}")
+
+@forensics_router.get("/visualizations/{artwork_id}")
+async def get_artwork_visualizations(artwork_id: str, request: Request):
+    """Get all generated visualizations for an artwork"""
+    user = await require_auth(request)
+    
+    visualizations = await db.generated_images.find(
+        {"artwork_id": artwork_id},
+        {"_id": 0, "full_data": 0}  # Exclude the large base64 data
+    ).sort("created_at", -1).to_list(20)
+    
+    # Add image URLs
+    for viz in visualizations:
+        viz["image_url"] = f"/api/forensics/image/{viz['image_id']}"
+    
+    return {"visualizations": visualizations}
 
 @forensics_router.get("/image/{image_id}")
 async def get_forensic_image(image_id: str):

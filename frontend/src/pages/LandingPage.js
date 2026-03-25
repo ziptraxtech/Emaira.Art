@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth, API } from "@/App";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import LanguageSelector from "@/components/LanguageSelector";
 import { 
   Eye, 
   Fingerprint, 
@@ -28,6 +30,7 @@ import {
 
 const LandingPage = () => {
   const { user, login, logout, loading } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [featuredArtworks, setFeaturedArtworks] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -88,18 +91,19 @@ const LandingPage = () => {
 
             {/* Desktop Nav */}
             <div className="hidden md:flex items-center gap-8">
-              <Link to="/gallery" className="nav-link text-sm font-medium" data-testid="nav-gallery">Gallery</Link>
-              <Link to="/about" className="nav-link text-sm font-medium" data-testid="nav-about">About</Link>
-              <Link to="/technology" className="nav-link text-sm font-medium" data-testid="nav-technology">Technology</Link>
-              <Link to="/events" className="nav-link text-sm font-medium" data-testid="nav-events">Events</Link>
-              <Link to="/pricing" className="nav-link text-sm font-medium" data-testid="nav-pricing">Pricing</Link>
+              <Link to="/gallery" className="nav-link text-sm font-medium" data-testid="nav-gallery">{t('nav.gallery')}</Link>
+              <Link to="/about" className="nav-link text-sm font-medium" data-testid="nav-about">{t('nav.about')}</Link>
+              <Link to="/technology" className="nav-link text-sm font-medium" data-testid="nav-technology">{t('nav.technology')}</Link>
+              <Link to="/events" className="nav-link text-sm font-medium" data-testid="nav-events">{t('nav.events')}</Link>
+              <Link to="/pricing" className="nav-link text-sm font-medium" data-testid="nav-pricing">{t('nav.pricing')}</Link>
               {user && (
-                <Link to="/dashboard" className="nav-link text-sm font-medium" data-testid="nav-dashboard">Dashboard</Link>
+                <Link to="/dashboard" className="nav-link text-sm font-medium" data-testid="nav-dashboard">{t('nav.dashboard')}</Link>
               )}
             </div>
 
             {/* Auth Buttons */}
             <div className="hidden md:flex items-center gap-4">
+              <LanguageSelector />
               {loading ? (
                 <div className="w-8 h-8 border-2 border-[#B8962F] border-t-transparent rounded-full animate-spin"></div>
               ) : user ? (
@@ -116,16 +120,16 @@ const LandingPage = () => {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="bg-white border-[#E8E8E0]">
                     <DropdownMenuItem onClick={() => navigate('/dashboard')} className="cursor-pointer">
-                      <User className="w-4 h-4 mr-2" /> Dashboard
+                      <User className="w-4 h-4 mr-2" /> {t('nav.dashboard')}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={logout} className="cursor-pointer" data-testid="logout-btn">
-                      <LogOut className="w-4 h-4 mr-2" /> Logout
+                      <LogOut className="w-4 h-4 mr-2" /> {t('nav.signOut')}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
                 <Button onClick={login} className="btn-gold text-sm" data-testid="login-btn">
-                  Sign In with Google
+                  {t('nav.signIn')}
                 </Button>
               )}
             </div>
