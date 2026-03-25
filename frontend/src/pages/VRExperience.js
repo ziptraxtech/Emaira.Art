@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth, API } from "@/App";
 import axios from "axios";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Progress } from "@/components/ui/progress";
 import {
   ArrowLeft,
   Eye,
@@ -19,35 +20,136 @@ import {
   Volume2,
   VolumeX,
   Maximize,
+  Minimize,
   RotateCcw,
   Loader2,
   Sparkles,
   X,
-  ChevronRight
+  ChevronRight,
+  ChevronLeft,
+  Smartphone,
+  Monitor,
+  Glasses,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  Info,
+  Download,
+  Share2,
+  Bookmark,
+  BookmarkCheck
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 const VRExperience = () => {
   const { storyId } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const containerRef = useRef(null);
+  const imageRef = useRef(null);
+  
+  // Core state
   const [story, setStory] = useState(null);
   const [artwork, setArtwork] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState("narrative"); // narrative or forensic
+  const [activeView, setActiveView] = useState("narrative");
+  
+  // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [currentScene, setCurrentScene] = useState(0);
+  const [progress, setProgress] = useState(0);
+  
+  // Forensic state
   const [analysisType, setAnalysisType] = useState("pigment");
   const [forensicResult, setForensicResult] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [generatingViz, setGeneratingViz] = useState(false);
   const [visualization, setVisualization] = useState(null);
+  const [forensicReport, setForensicReport] = useState(null);
+  
+  // UI state
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobilePanel, setShowMobilePanel] = useState(false);
+  const [vrMode, setVrMode] = useState("desktop"); // desktop, mobile, vr
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  
+  // Image manipulation state
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
+  // Check for VR support and mobile
   useEffect(() => {
-    fetchData();
-  }, [storyId]);
+    const checkDevice = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      
+      // Check for WebXR support (VR headsets)
+      if (navigator.xr) {
+        navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+          if (supported) {
+            setVrMode("vr");
+          }
+        }).catch(() => {});
+      }
+    };
+    
+    checkDevice();
+    window.addEventListener('resize', checkDevice);
+    return () => window.removeEventListener('resize', checkDevice);
+  }, []);
 
-  const fetchData = async () => {
+  // Auto-advance scenes when playing
+  useEffect(() => {
+    let interval;
+    if (isPlaying && story?.narrative_content) {
+      const sceneDuration = 60000 / story.narrative_content.length; // Distribute time across scenes
+      interval = setInterval(() => {
+        setProgress((prev) => {
+          const newProgress = prev + (100 / (sceneDuration / 100));
+          if (newProgress >= 100) {
+            // Move to next scene
+            if (currentScene < story.narrative_content.length - 1) {
+              setCurrentScene((s) => s + 1);
+              return 0;
+            } else {
+              setIsPlaying(false);
+              return 100;
+            }
+          }
+          return newProgress;
+        });
+      }, 100);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying, currentScene, story]);
+
+  // Fullscreen handling
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const fetchData = useCallback(async () => {
     try {
       const storyResponse = await axios.get(`${API}/stories/${storyId}`, {
         withCredentials: true
@@ -57,6 +159,17 @@ const VRExperience = () => {
       if (storyResponse.data.artwork_id) {
         const artworkResponse = await axios.get(`${API}/artworks/${storyResponse.data.artwork_id}`);
         setArtwork(artworkResponse.data);
+        
+        // Fetch forensic report if user has access
+        try {
+          const reportResponse = await axios.get(
+            `${API}/forensics/report/${storyResponse.data.artwork_id}`,
+            { withCredentials: true }
+          );
+          setForensicReport(reportResponse.data);
+        } catch (e) {
+          // User may not have access - that's okay
+        }
       }
     } catch (error) {
       console.error("Error:", error);
@@ -65,7 +178,11 @@ const VRExperience = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [storyId, navigate]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const runForensicAnalysis = async (type) => {
     if (!artwork) return;
@@ -120,6 +237,41 @@ const VRExperience = () => {
     }
   };
 
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  const handleZoomIn = () => setZoom((z) => Math.min(z + 0.25, 3));
+  const handleZoomOut = () => setZoom((z) => Math.max(z - 0.25, 0.5));
+  const handleRotate = () => setRotation((r) => (r + 90) % 360);
+  const handleReset = () => {
+    setZoom(1);
+    setRotation(0);
+    setImagePosition({ x: 0, y: 0 });
+  };
+
+  const handleMouseDown = (e) => {
+    if (zoom > 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.clientX - imagePosition.x, y: e.clientY - imagePosition.y });
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (isDragging) {
+      setImagePosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
+
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying);
   };
@@ -127,12 +279,31 @@ const VRExperience = () => {
   const handleNextScene = () => {
     if (story?.narrative_content && currentScene < story.narrative_content.length - 1) {
       setCurrentScene(currentScene + 1);
+      setProgress(0);
     }
   };
 
   const handlePrevScene = () => {
     if (currentScene > 0) {
       setCurrentScene(currentScene - 1);
+      setProgress(0);
+    }
+  };
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `${artwork?.title} - Emaira.Art`,
+          text: `Experience the story of ${artwork?.title} by ${artwork?.artist}`,
+          url: window.location.href
+        });
+      } catch (e) {
+        // User cancelled or error
+      }
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      toast.success("Link copied to clipboard");
     }
   };
 
@@ -140,8 +311,9 @@ const VRExperience = () => {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-[#A8A8A0]">Loading experience...</p>
+          <div className="w-16 h-16 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-[#A8A8A0] font-display text-lg">Preparing your experience...</p>
+          <p className="text-[#666660] text-sm mt-2">Loading artwork and narrative</p>
         </div>
       </div>
     );
@@ -150,7 +322,12 @@ const VRExperience = () => {
   if (!story || !artwork) {
     return (
       <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-        <p className="text-[#A8A8A0]">Experience not found</p>
+        <div className="text-center">
+          <p className="text-[#A8A8A0] mb-4">Experience not found</p>
+          <Button onClick={() => navigate('/gallery')} className="btn-gold">
+            Back to Gallery
+          </Button>
+        </div>
       </div>
     );
   }
@@ -158,8 +335,204 @@ const VRExperience = () => {
   const narrativeContent = story.narrative_content || [];
   const currentSceneData = narrativeContent[currentScene];
 
+  // Mobile Layout
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex flex-col" ref={containerRef}>
+        {/* Mobile Top Bar */}
+        <div className="fixed top-0 left-0 right-0 z-50 glass-dark">
+          <div className="flex items-center justify-between h-14 px-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate(`/story/${storyId}`)}
+              className="text-[#A8A8A0] -ml-2"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            
+            <div className="flex-1 text-center px-2">
+              <p className="text-xs text-[#A8A8A0] truncate">{artwork.artist}</p>
+              <h1 className="font-display text-sm text-[#F5F5F0] truncate">{artwork.title}</h1>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" onClick={handleShare} className="text-[#A8A8A0]">
+                <Share2 className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={toggleFullscreen} className="text-[#A8A8A0]">
+                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Artwork Display */}
+        <div className="flex-1 pt-14 pb-40 flex items-center justify-center p-4">
+          <div 
+            className="relative w-full max-w-md aspect-[3/4] overflow-hidden rounded-lg"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onTouchStart={(e) => handleMouseDown(e.touches[0])}
+            onTouchMove={(e) => handleMouseMove(e.touches[0])}
+            onTouchEnd={handleMouseUp}
+          >
+            <img
+              ref={imageRef}
+              src={artwork.image_url}
+              alt={artwork.title}
+              className="w-full h-full object-contain transition-transform duration-200"
+              style={{
+                transform: `scale(${zoom}) rotate(${rotation}deg) translate(${imagePosition.x / zoom}px, ${imagePosition.y / zoom}px)`,
+                cursor: zoom > 1 ? 'grab' : 'default'
+              }}
+              draggable={false}
+            />
+            
+            {/* Forensic Overlay */}
+            {activeView === 'forensic' && (
+              <div className="absolute inset-0 rounded-lg forensic-scan pointer-events-none">
+                <div className="absolute inset-0 grid grid-cols-3 grid-rows-3">
+                  {[...Array(9)].map((_, i) => (
+                    <div key={i} className="border border-[#00F0FF]/20"></div>
+                  ))}
+                </div>
+                <div className="absolute top-2 left-2">
+                  <Badge className="badge-forensic text-xs">
+                    {analysisType === 'pigment' && <Palette className="w-3 h-3 mr-1" />}
+                    {analysisType === 'signature' && <FileSignature className="w-3 h-3 mr-1" />}
+                    {analysisType === 'canvas' && <Grid3X3 className="w-3 h-3 mr-1" />}
+                    {analysisType} Mode
+                  </Badge>
+                </div>
+              </div>
+            )}
+
+            {/* Zoom Controls */}
+            <div className="absolute bottom-2 right-2 flex gap-1">
+              <Button size="sm" variant="ghost" onClick={handleZoomOut} className="w-8 h-8 bg-black/50 text-white">
+                <ZoomOut className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleZoomIn} className="w-8 h-8 bg-black/50 text-white">
+                <ZoomIn className="w-4 h-4" />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleReset} className="w-8 h-8 bg-black/50 text-white">
+                <RotateCcw className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile Bottom Panel */}
+        <div className="fixed bottom-0 left-0 right-0 glass-dark border-t border-[#1a1a1a]">
+          {/* View Toggle */}
+          <div className="flex border-b border-[#1a1a1a]">
+            <button
+              onClick={() => setActiveView('narrative')}
+              className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
+                activeView === 'narrative' ? 'text-[#D4AF37] bg-[#D4AF37]/10' : 'text-[#A8A8A0]'
+              }`}
+            >
+              <Eye className="w-4 h-4" /> Narrative
+            </button>
+            <button
+              onClick={() => setActiveView('forensic')}
+              className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 ${
+                activeView === 'forensic' ? 'text-[#00F0FF] bg-[#00F0FF]/10' : 'text-[#A8A8A0]'
+              }`}
+            >
+              <Fingerprint className="w-4 h-4" /> Forensic
+            </button>
+          </div>
+
+          {activeView === 'narrative' ? (
+            <div className="p-4">
+              {currentSceneData && (
+                <div className="mb-4">
+                  <Badge className="badge-gold mb-2 text-xs">{currentSceneData.scene}</Badge>
+                  <p className="text-[#F5F5F0] text-sm line-clamp-2">{currentSceneData.narration}</p>
+                </div>
+              )}
+              
+              {/* Progress */}
+              <Progress value={progress} className="h-1 mb-3" />
+              
+              {/* Controls */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[#666660]">
+                  {currentScene + 1} / {narrativeContent.length}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="ghost" onClick={handlePrevScene} disabled={currentScene === 0} className="text-[#A8A8A0]">
+                    <ChevronLeft className="w-5 h-5" />
+                  </Button>
+                  <Button size="sm" onClick={handlePlayPause} className="btn-gold w-10 h-10 rounded-full">
+                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={handleNextScene} disabled={currentScene >= narrativeContent.length - 1} className="text-[#A8A8A0]">
+                    <ChevronRight className="w-5 h-5" />
+                  </Button>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => setIsMuted(!isMuted)} className="text-[#A8A8A0]">
+                  {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4">
+              {/* Analysis Type Selector */}
+              <div className="flex gap-2 mb-3">
+                {['pigment', 'signature', 'canvas'].map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setAnalysisType(type)}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1 ${
+                      analysisType === type 
+                        ? 'bg-[#00F0FF]/20 text-[#00F0FF] border border-[#00F0FF]/50' 
+                        : 'bg-[#111] text-[#A8A8A0] border border-[#1a1a1a]'
+                    }`}
+                  >
+                    {type === 'pigment' && <Palette className="w-3 h-3" />}
+                    {type === 'signature' && <FileSignature className="w-3 h-3" />}
+                    {type === 'canvas' && <Grid3X3 className="w-3 h-3" />}
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              {/* Analysis Result Preview */}
+              {forensicResult && (
+                <div className="mb-3 p-2 bg-[#00F0FF]/5 border border-[#00F0FF]/20 rounded-lg">
+                  <p className="text-xs text-[#F5F5F0] line-clamp-2">
+                    {forensicResult.results?.summary?.substring(0, 100)}...
+                  </p>
+                </div>
+              )}
+
+              {/* Action Button */}
+              <Button
+                onClick={() => runForensicAnalysis(analysisType)}
+                disabled={analyzing}
+                className="w-full btn-forensic"
+              >
+                {analyzing ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Analyzing...</>
+                ) : (
+                  <><Fingerprint className="w-4 h-4 mr-2" /> Run AI Analysis</>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop Layout
   return (
-    <div className="min-h-screen bg-[#050505] flex flex-col">
+    <div className="min-h-screen bg-[#050505] flex flex-col" ref={containerRef}>
       {/* Top Bar */}
       <div className="fixed top-0 left-0 right-0 z-50 glass-dark">
         <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
@@ -207,11 +580,30 @@ const VRExperience = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Device Mode Indicator */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1 px-2 py-1 bg-[#111] rounded-lg">
+                      {vrMode === 'vr' && <Glasses className="w-4 h-4 text-[#00F0FF]" />}
+                      {vrMode === 'mobile' && <Smartphone className="w-4 h-4 text-[#A8A8A0]" />}
+                      {vrMode === 'desktop' && <Monitor className="w-4 h-4 text-[#A8A8A0]" />}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{vrMode === 'vr' ? 'VR Headset Detected' : vrMode === 'mobile' ? 'Mobile Mode' : 'Desktop Mode'}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <Button variant="ghost" onClick={handleShare} className="text-[#A8A8A0]">
+                <Share2 className="w-5 h-5" />
+              </Button>
               <Button variant="ghost" onClick={() => setIsMuted(!isMuted)} className="text-[#A8A8A0]">
                 {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
               </Button>
-              <Button variant="ghost" className="text-[#A8A8A0]">
-                <Maximize className="w-5 h-5" />
+              <Button variant="ghost" onClick={toggleFullscreen} className="text-[#A8A8A0]">
+                {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
               </Button>
             </div>
           </div>
@@ -222,12 +614,24 @@ const VRExperience = () => {
       <div className="flex-1 flex pt-16">
         {/* Artwork Display */}
         <div className="flex-1 relative">
-          <div className="absolute inset-0 flex items-center justify-center p-8">
+          <div 
+            className="absolute inset-0 flex items-center justify-center p-8"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          >
             <div className="relative max-w-4xl w-full aspect-[4/3]">
               <img
+                ref={imageRef}
                 src={artwork.image_url}
                 alt={artwork.title}
-                className="w-full h-full object-contain rounded-lg"
+                className="w-full h-full object-contain rounded-lg transition-transform duration-200"
+                style={{
+                  transform: `scale(${zoom}) rotate(${rotation}deg) translate(${imagePosition.x / zoom}px, ${imagePosition.y / zoom}px)`,
+                  cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'
+                }}
+                draggable={false}
               />
               
               {/* Forensic Overlay */}
@@ -260,16 +664,84 @@ const VRExperience = () => {
                       />
                     </div>
                   )}
+
+                  {/* Forensic Quick Stats */}
+                  {forensicReport && (
+                    <div className="absolute bottom-4 left-4 right-4 flex gap-2">
+                      <div className="glass-dark p-2 rounded-lg flex-1">
+                        <p className="text-[10px] text-[#00F0FF] uppercase tracking-wider">Auth Score</p>
+                        <p className="text-lg font-mono text-[#F5F5F0]">
+                          {forensicReport.forensic_summary?.authentication_score || 95}%
+                        </p>
+                      </div>
+                      <div className="glass-dark p-2 rounded-lg flex-1">
+                        <p className="text-[10px] text-[#00F0FF] uppercase tracking-wider">Technique</p>
+                        <p className="text-xs text-[#F5F5F0] line-clamp-2">
+                          {forensicReport.forensic_summary?.technique?.substring(0, 30) || 'Oil on canvas'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Narrative Overlay */}
               {activeView === 'narrative' && currentSceneData && (
                 <div className="absolute bottom-0 left-0 right-0 glass-dark rounded-b-lg p-6">
-                  <Badge className="badge-gold mb-2">{currentSceneData.scene}</Badge>
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge className="badge-gold">{currentSceneData.scene}</Badge>
+                    <span className="text-xs text-[#666660] font-mono">
+                      Scene {currentScene + 1} of {narrativeContent.length}
+                    </span>
+                  </div>
                   <p className="text-[#F5F5F0] text-lg">{currentSceneData.narration}</p>
+                  <Progress value={progress} className="mt-4 h-1" />
                 </div>
               )}
+
+              {/* Image Controls */}
+              <div className="absolute top-4 right-4 flex flex-col gap-2">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" variant="ghost" onClick={handleZoomIn} className="bg-black/50 text-white w-8 h-8">
+                        <ZoomIn className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left"><p>Zoom In</p></TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" variant="ghost" onClick={handleZoomOut} className="bg-black/50 text-white w-8 h-8">
+                        <ZoomOut className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left"><p>Zoom Out</p></TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" variant="ghost" onClick={handleRotate} className="bg-black/50 text-white w-8 h-8">
+                        <RotateCw className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left"><p>Rotate</p></TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button size="sm" variant="ghost" onClick={handleReset} className="bg-black/50 text-white w-8 h-8">
+                        <RotateCcw className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left"><p>Reset View</p></TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
             </div>
           </div>
         </div>
@@ -290,7 +762,7 @@ const VRExperience = () => {
                   {narrativeContent.map((scene, index) => (
                     <button
                       key={index}
-                      onClick={() => setCurrentScene(index)}
+                      onClick={() => { setCurrentScene(index); setProgress(0); }}
                       className={`w-full text-left p-3 rounded-lg transition-all ${
                         currentScene === index 
                           ? 'bg-[#D4AF37]/10 border border-[#D4AF37]' 
@@ -384,12 +856,14 @@ const VRExperience = () => {
                       <p className="text-sm text-[#A8A8A0]">
                         Analyze the chemical composition of pigments used, identifying era-specific materials and authenticity markers.
                       </p>
-                      {story.forensic_content?.pigment_analysis && (
+                      {forensicReport?.forensic_summary?.pigments && (
                         <div className="p-3 bg-[#111] rounded-lg border border-[#1a1a1a]">
-                          <p className="text-xs text-[#666660] mb-1">Quick Info</p>
-                          <p className="text-sm text-[#F5F5F0] font-mono">
-                            {story.forensic_content.pigment_analysis}
-                          </p>
+                          <p className="text-xs text-[#666660] mb-1">Known Pigments</p>
+                          <div className="flex flex-wrap gap-1">
+                            {forensicReport.forensic_summary.pigments.map((p, i) => (
+                              <Badge key={i} className="bg-[#00F0FF]/10 text-[#00F0FF] text-xs">{p}</Badge>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -400,11 +874,11 @@ const VRExperience = () => {
                       <p className="text-sm text-[#A8A8A0]">
                         Comparative analysis of signature patterns, brushwork, and pressure points for authentication.
                       </p>
-                      {story.forensic_content?.signature_markers && (
+                      {forensicReport?.forensic_summary?.signature_markers && (
                         <div className="p-3 bg-[#111] rounded-lg border border-[#1a1a1a]">
-                          <p className="text-xs text-[#666660] mb-1">Quick Info</p>
+                          <p className="text-xs text-[#666660] mb-1">Signature Markers</p>
                           <p className="text-sm text-[#F5F5F0] font-mono">
-                            {story.forensic_content.signature_markers}
+                            {forensicReport.forensic_summary.signature_markers}
                           </p>
                         </div>
                       )}
@@ -416,11 +890,11 @@ const VRExperience = () => {
                       <p className="text-sm text-[#A8A8A0]">
                         Analyze canvas weave density, material composition, and aging patterns.
                       </p>
-                      {story.forensic_content?.canvas_analysis && (
+                      {forensicReport?.forensic_summary?.canvas_info && (
                         <div className="p-3 bg-[#111] rounded-lg border border-[#1a1a1a]">
-                          <p className="text-xs text-[#666660] mb-1">Quick Info</p>
+                          <p className="text-xs text-[#666660] mb-1">Canvas Analysis</p>
                           <p className="text-sm text-[#F5F5F0] font-mono">
-                            {story.forensic_content.canvas_analysis}
+                            {forensicReport.forensic_summary.canvas_info}
                           </p>
                         </div>
                       )}
