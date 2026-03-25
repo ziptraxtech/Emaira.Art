@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth, API } from "@/App";
+import { useTranslation } from "react-i18next";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +57,7 @@ import {
 const VRExperience = () => {
   const { storyId } = useParams();
   const { user } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const containerRef = useRef(null);
   const imageRef = useRef(null);
