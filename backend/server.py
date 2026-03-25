@@ -221,6 +221,21 @@ class ForensicAnalysisRequest(BaseModel):
     artwork_id: str
     analysis_type: str
 
+class Organization(BaseModel):
+    org_id: str = Field(default_factory=lambda: f"org_{uuid.uuid4().hex[:12]}")
+    name: str
+    type: str  # museum, gallery, collector, auction_house, educational
+    contact_email: str
+    contact_name: Optional[str] = None
+    website: Optional[str] = None
+    address: Optional[str] = None
+    country: Optional[str] = None
+    subscription_plan: str = "basic"  # basic, professional, enterprise
+    members: List[str] = []  # List of user_ids
+    admin_users: List[str] = []  # List of user_ids with org admin access
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 class SubscriptionTier(BaseModel):
     tier_id: str
     name: str
@@ -558,6 +573,226 @@ async def list_admins(request: Request):
             admin["role_info"] = ADMIN_ROLES[role]
     
     return {"admins": admins, "available_roles": ADMIN_ROLES}
+
+# ===================== ORGANIZATIONS ROUTES =====================
+
+organizations_router = APIRouter(prefix="/organizations", tags=["Organizations"])
+
+@organizations_router.get("/")
+async def list_organizations(request: Request):
+    """List all organizations (Super Admin only)"""
+    await require_super_admin(request)
+    
+    organizations = await db.organizations.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"organizations": organizations}
+
+@organizations_router.get("/{org_id}")
+async def get_organization(org_id: str, request: Request):
+    """Get organization details"""
+    user = await require_auth(request)
+    
+    org = await db.organizations.find_one({"org_id": org_id}, {"_id": 0})
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    # Only super_admin or org members can view
+    if user.role != "super_admin" and user.user_id not in org.get("members", []) and user.user_id not in org.get("admin_users", []):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Get member details
+    member_ids = org.get("members", []) + org.get("admin_users", [])
+    members = await db.users.find(
+        {"user_id": {"$in": member_ids}},
+        {"_id": 0, "user_id": 1, "email": 1, "name": 1, "picture": 1, "role": 1}
+    ).to_list(100)
+    
+    return {"organization": org, "members": members}
+
+@organizations_router.post("/")
+async def create_organization(request: Request):
+    """Create a new organization (Super Admin only)"""
+    admin = await require_super_admin(request)
+    body = await request.json()
+    
+    org = Organization(
+        name=body.get("name"),
+        type=body.get("type", "gallery"),
+        contact_email=body.get("contact_email"),
+        contact_name=body.get("contact_name"),
+        website=body.get("website"),
+        address=body.get("address"),
+        country=body.get("country"),
+        subscription_plan=body.get("subscription_plan", "basic")
+    )
+    
+    org_dict = org.model_dump()
+    org_dict["created_at"] = org_dict["created_at"].isoformat()
+    await db.organizations.insert_one(org_dict)
+    
+    await log_activity(admin.user_id, "create_organization", {"org_id": org.org_id})
+    
+    return {"org_id": org.org_id, "message": "Organization created successfully"}
+
+@organizations_router.put("/{org_id}")
+async def update_organization(org_id: str, request: Request):
+    """Update organization details (Super Admin only)"""
+    admin = await require_super_admin(request)
+    body = await request.json()
+    
+    org = await db.organizations.find_one({"org_id": org_id}, {"_id": 0})
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    update_fields = {}
+    for field in ["name", "type", "contact_email", "contact_name", "website", "address", "country", "subscription_plan", "is_active"]:
+        if field in body:
+            update_fields[field] = body[field]
+    
+    if update_fields:
+        await db.organizations.update_one(
+            {"org_id": org_id},
+            {"$set": update_fields}
+        )
+    
+    await log_activity(admin.user_id, "update_organization", {"org_id": org_id})
+    
+    return {"message": "Organization updated successfully"}
+
+@organizations_router.delete("/{org_id}")
+async def delete_organization(org_id: str, request: Request):
+    """Delete organization (Super Admin only)"""
+    admin = await require_super_admin(request)
+    
+    org = await db.organizations.find_one({"org_id": org_id}, {"_id": 0})
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    await db.organizations.delete_one({"org_id": org_id})
+    await log_activity(admin.user_id, "delete_organization", {"org_id": org_id})
+    
+    return {"message": "Organization deleted successfully"}
+
+@organizations_router.post("/{org_id}/members")
+async def add_organization_member(org_id: str, request: Request):
+    """Add a member to organization (Super Admin only)"""
+    admin = await require_super_admin(request)
+    body = await request.json()
+    user_id = body.get("user_id")
+    is_admin = body.get("is_admin", False)
+    
+    org = await db.organizations.find_one({"org_id": org_id}, {"_id": 0})
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    update_op = {"$addToSet": {"members": user_id}}
+    if is_admin:
+        update_op["$addToSet"]["admin_users"] = user_id
+    
+    await db.organizations.update_one({"org_id": org_id}, update_op)
+    
+    # Update user with org_id
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"organization_id": org_id}}
+    )
+    
+    await log_activity(admin.user_id, "add_org_member", {"org_id": org_id, "user_id": user_id})
+    
+    return {"message": f"User {user_id} added to organization"}
+
+@organizations_router.delete("/{org_id}/members/{user_id}")
+async def remove_organization_member(org_id: str, user_id: str, request: Request):
+    """Remove a member from organization (Super Admin only)"""
+    admin = await require_super_admin(request)
+    
+    await db.organizations.update_one(
+        {"org_id": org_id},
+        {"$pull": {"members": user_id, "admin_users": user_id}}
+    )
+    
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$unset": {"organization_id": ""}}
+    )
+    
+    await log_activity(admin.user_id, "remove_org_member", {"org_id": org_id, "user_id": user_id})
+    
+    return {"message": f"User {user_id} removed from organization"}
+
+# ===================== SUPERADMIN SETUP =====================
+
+@admin_router.post("/setup-superadmin")
+async def setup_superadmin(request: Request):
+    """Create or update superadmin account (one-time setup)"""
+    body = await request.json()
+    email = body.get("email")
+    name = body.get("name", "Super Admin")
+    
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    
+    # Check if user already exists
+    existing_user = await db.users.find_one({"email": email}, {"_id": 0})
+    
+    if existing_user:
+        # Update to super_admin role
+        await db.users.update_one(
+            {"email": email},
+            {"$set": {"role": "super_admin", "admin_permissions": list(ADMIN_ROLES["super_admin"]["permissions"])}}
+        )
+        return {
+            "message": "User upgraded to Super Admin",
+            "user_id": existing_user["user_id"],
+            "email": email,
+            "role": "super_admin",
+            "login_method": "Sign in with Google using this email"
+        }
+    else:
+        # Create new superadmin user
+        user_id = f"user_{uuid.uuid4().hex[:12]}"
+        user_data = {
+            "user_id": user_id,
+            "email": email,
+            "name": name,
+            "picture": None,
+            "role": "super_admin",
+            "admin_permissions": list(ADMIN_ROLES["super_admin"]["permissions"]),
+            "subscription_tier": "collectors_advisory",  # Give full access
+            "purchased_stories": [],
+            "forensic_markers_learned": [],
+            "tags": ["superadmin", "founder"],
+            "notes": "Platform super administrator",
+            "total_spent": 0.0,
+            "advisory_sessions_remaining": 99,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.users.insert_one(user_data)
+        
+        return {
+            "message": "Super Admin account created",
+            "user_id": user_id,
+            "email": email,
+            "name": name,
+            "role": "super_admin",
+            "login_method": "Sign in with Google using this email",
+            "subscription": "collectors_advisory (full access)"
+        }
+
+@admin_router.get("/superadmins")
+async def list_superadmins(request: Request):
+    """List all super admins"""
+    await require_super_admin(request)
+    
+    superadmins = await db.users.find(
+        {"role": "super_admin"},
+        {"_id": 0, "user_id": 1, "email": 1, "name": 1, "picture": 1, "created_at": 1}
+    ).to_list(100)
+    
+    return {"superadmins": superadmins}
 
 # ===================== EMAIL CAMPAIGNS ROUTES =====================
 
@@ -3759,6 +3994,7 @@ api_router.include_router(crm_router)
 api_router.include_router(admin_router)
 api_router.include_router(campaigns_router)
 api_router.include_router(museum_router)
+api_router.include_router(organizations_router)
 
 @api_router.get("/")
 async def root():

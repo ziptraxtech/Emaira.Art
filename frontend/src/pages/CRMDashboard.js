@@ -92,6 +92,11 @@ const CRMDashboard = () => {
   const [metSearchQuery, setMetSearchQuery] = useState("");
   const [metResults, setMetResults] = useState([]);
   const [metSearching, setMetSearching] = useState(false);
+  
+  // Organizations State
+  const [organizations, setOrganizations] = useState([]);
+  const [showOrgDialog, setShowOrgDialog] = useState(false);
+  const [newOrg, setNewOrg] = useState({ name: "", type: "gallery", contact_email: "", contact_name: "", website: "", country: "" });
 
   useEffect(() => {
     fetchData();
@@ -132,6 +137,15 @@ const CRMDashboard = () => {
         const res = await axios.get(`${API}/admin/users/admins`, { withCredentials: true });
         setAdmins(res.data.admins || []);
         setAvailableRoles(res.data.available_roles || {});
+      } else if (activeTab === "organizations") {
+        try {
+          const res = await axios.get(`${API}/organizations/`, { withCredentials: true });
+          setOrganizations(res.data.organizations || []);
+        } catch (e) {
+          if (e.response?.status === 403) {
+            toast.error("Only Super Admins can manage organizations");
+          }
+        }
       }
     } catch (error) {
       console.error("Error fetching CRM data:", error);
@@ -150,6 +164,29 @@ const CRMDashboard = () => {
       setSelectedUser(userId);
     } catch (error) {
       console.error("Error fetching user detail:", error);
+    }
+  };
+
+  const createOrganization = async () => {
+    try {
+      await axios.post(`${API}/organizations/`, newOrg, { withCredentials: true });
+      toast.success("Organization created successfully");
+      setShowOrgDialog(false);
+      setNewOrg({ name: "", type: "gallery", contact_email: "", contact_name: "", website: "", country: "" });
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to create organization");
+    }
+  };
+
+  const deleteOrganization = async (orgId) => {
+    if (!window.confirm("Are you sure you want to delete this organization?")) return;
+    try {
+      await axios.delete(`${API}/organizations/${orgId}`, { withCredentials: true });
+      toast.success("Organization deleted");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Failed to delete organization");
     }
   };
 
@@ -331,6 +368,9 @@ const CRMDashboard = () => {
               </TabsTrigger>
               <TabsTrigger value="admins" className="data-[state=active]:bg-[#B8962F] data-[state=active]:text-white" data-testid="tab-admins">
                 <Shield className="w-4 h-4 mr-2" /> Admins
+              </TabsTrigger>
+              <TabsTrigger value="organizations" className="data-[state=active]:bg-[#B8962F] data-[state=active]:text-white" data-testid="tab-organizations">
+                <Building2 className="w-4 h-4 mr-2" /> Organizations
               </TabsTrigger>
               <TabsTrigger value="museums" className="data-[state=active]:bg-[#B8962F] data-[state=active]:text-white" data-testid="tab-museums">
                 <Building2 className="w-4 h-4 mr-2" /> Museums
@@ -848,6 +888,148 @@ const CRMDashboard = () => {
                     <Button variant="outline" onClick={() => setShowRoleDialog(false)}>Cancel</Button>
                     <Button onClick={assignRole} className="btn-gold" disabled={!selectedRole}>
                       Assign Role
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </TabsContent>
+
+            {/* Organizations Tab */}
+            <TabsContent value="organizations">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h3 className="font-display text-xl text-[#1A1A18] mb-2">Organizations</h3>
+                  <p className="text-[#4A4A45] text-sm">Manage museums, galleries, and collector organizations</p>
+                </div>
+                <Button onClick={() => setShowOrgDialog(true)} className="btn-gold" data-testid="create-org-btn">
+                  <Plus className="w-4 h-4 mr-2" /> New Organization
+                </Button>
+              </div>
+
+              {loading ? (
+                <div className="space-y-4">
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className="skeleton-light h-24 rounded-lg"></div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {organizations.length === 0 ? (
+                    <div className="card-ivory rounded-lg p-8 text-center">
+                      <Building2 className="w-12 h-12 mx-auto text-[#8A8A80] mb-4" />
+                      <p className="text-[#4A4A45]">No organizations yet. Create your first organization!</p>
+                    </div>
+                  ) : (
+                    organizations.map((org) => (
+                      <div key={org.org_id} className="card-ivory rounded-lg p-6" data-testid={`org-${org.org_id}`}>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-display text-lg text-[#1A1A18]">{org.name}</h4>
+                              <Badge className={org.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}>
+                                {org.is_active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-[#4A4A45]">{org.contact_email}</p>
+                            <div className="flex gap-2 mt-2">
+                              <Badge className="bg-[#F5F5F0] text-[#4A4A45]">{org.type}</Badge>
+                              <Badge className="bg-[#F5F5F0] text-[#4A4A45]">{org.subscription_plan}</Badge>
+                              {org.country && <Badge className="bg-[#F5F5F0] text-[#4A4A45]">{org.country}</Badge>}
+                            </div>
+                            <p className="text-xs text-[#8A8A80] mt-2">
+                              {org.members?.length || 0} members • {org.admin_users?.length || 0} admins
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            {org.website && (
+                              <Button size="sm" variant="outline" className="border-[#E8E8E0]" onClick={() => window.open(org.website, '_blank')}>
+                                <ExternalLink className="w-4 h-4" />
+                              </Button>
+                            )}
+                            <Button size="sm" variant="ghost" onClick={() => deleteOrganization(org.org_id)} className="text-red-500">
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* Create Organization Dialog */}
+              <Dialog open={showOrgDialog} onOpenChange={setShowOrgDialog}>
+                <DialogContent className="bg-white max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle className="font-display text-xl">Create Organization</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium text-[#4A4A45]">Organization Name *</label>
+                      <Input
+                        value={newOrg.name}
+                        onChange={(e) => setNewOrg({...newOrg, name: e.target.value})}
+                        placeholder="e.g., Metropolitan Museum"
+                        className="input-light mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-[#4A4A45]">Type</label>
+                      <Select value={newOrg.type} onValueChange={(v) => setNewOrg({...newOrg, type: v})}>
+                        <SelectTrigger className="bg-white border-[#E8E8E0] mt-1">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-[#E8E8E0]">
+                          <SelectItem value="museum">Museum</SelectItem>
+                          <SelectItem value="gallery">Gallery</SelectItem>
+                          <SelectItem value="collector">Collector</SelectItem>
+                          <SelectItem value="auction_house">Auction House</SelectItem>
+                          <SelectItem value="educational">Educational</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-[#4A4A45]">Contact Email *</label>
+                      <Input
+                        type="email"
+                        value={newOrg.contact_email}
+                        onChange={(e) => setNewOrg({...newOrg, contact_email: e.target.value})}
+                        placeholder="contact@organization.com"
+                        className="input-light mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-[#4A4A45]">Contact Name</label>
+                      <Input
+                        value={newOrg.contact_name}
+                        onChange={(e) => setNewOrg({...newOrg, contact_name: e.target.value})}
+                        placeholder="John Doe"
+                        className="input-light mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-[#4A4A45]">Website</label>
+                      <Input
+                        value={newOrg.website}
+                        onChange={(e) => setNewOrg({...newOrg, website: e.target.value})}
+                        placeholder="https://www.organization.com"
+                        className="input-light mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-[#4A4A45]">Country</label>
+                      <Input
+                        value={newOrg.country}
+                        onChange={(e) => setNewOrg({...newOrg, country: e.target.value})}
+                        placeholder="United States"
+                        className="input-light mt-1"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowOrgDialog(false)}>Cancel</Button>
+                    <Button onClick={createOrganization} className="btn-gold" disabled={!newOrg.name || !newOrg.contact_email}>
+                      Create Organization
                     </Button>
                   </DialogFooter>
                 </DialogContent>
