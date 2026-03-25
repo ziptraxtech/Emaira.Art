@@ -3820,6 +3820,324 @@ async def seed_data():
             },
             "is_featured": True,
             "story_id": "story_kapoor_bean"
+        },
+        # ADDITIONAL MASTERPIECES (39-50)
+        {
+            "artwork_id": "art_wanderer_sea_fog",
+            "title": "Wanderer above the Sea of Fog",
+            "artist": "Caspar David Friedrich",
+            "year": "1818",
+            "period": "Romanticism",
+            "movement": "German Romanticism",
+            "medium": "Oil on canvas",
+            "dimensions": "94.8 cm × 74.8 cm",
+            "location": "Hamburger Kunsthalle, Hamburg",
+            "image_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400",
+            "description": "Quintessential Romantic painting symbolizing man's contemplation of nature and the sublime.",
+            "provenance": [
+                {"year": "1818", "event": "Created in Dresden"},
+                {"year": "1970", "event": "Acquired by Hamburger Kunsthalle"}
+            ],
+            "forensic_data": {
+                "pigments": ["Lead white", "Prussian blue", "Iron oxide earth tones"],
+                "technique": "Precise layering, atmospheric perspective",
+                "signature_markers": "Rückenfigur (figure seen from behind), misty landscapes",
+                "canvas_info": "Finely woven linen, traditional ground"
+            },
+            "is_featured": True,
+            "story_id": "story_wanderer_sea_fog"
+        },
+        {
+            "artwork_id": "art_olympia",
+            "title": "Olympia",
+            "artist": "Édouard Manet",
+            "year": "1863",
+            "period": "Realism/Impressionism",
+            "movement": "Realism",
+            "medium": "Oil on canvas",
+            "dimensions": "130.5 cm × 190 cm",
+            "location": "Musée d'Orsay, Paris",
+            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "description": "Controversial masterpiece that scandalized Paris and redefined modern art.",
+            "provenance": [
+                {"year": "1863", "event": "Created, rejected by Salon"},
+                {"year": "1865", "event": "Exhibited at Salon, caused scandal"},
+                {"year": "1890", "event": "Acquired by French state"}
+            ],
+            "forensic_data": {
+                "pigments": ["Lead white", "Ivory black", "Vermillion", "Chrome yellow"],
+                "technique": "Flat color planes, direct gaze, modern lighting",
+                "signature_markers": "Bold outlines, stark contrasts, confrontational subject",
+                "canvas_info": "Large format canvas, visible brushwork"
+            },
+            "is_featured": True,
+            "story_id": "story_olympia"
+        },
+        {
+            "artwork_id": "art_liberty_leading",
+            "title": "Liberty Leading the People",
+            "artist": "Eugène Delacroix",
+            "year": "1830",
+            "period": "Romanticism",
+            "movement": "French Romanticism",
+            "medium": "Oil on canvas",
+            "dimensions": "260 cm × 325 cm",
+            "location": "Louvre Museum, Paris",
+            "image_url": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=400",
+            "description": "Iconic symbol of French Revolution and democracy, featuring Marianne.",
+            "provenance": [
+                {"year": "1830", "event": "Created after July Revolution"},
+                {"year": "1831", "event": "Purchased by French state"},
+                {"year": "1874", "event": "Transferred to Louvre"}
+            ],
+            "forensic_data": {
+                "pigments": ["Prussian blue", "Vermillion", "Lead white", "Ochres"],
+                "technique": "Dynamic composition, dramatic lighting, pyramid structure",
+                "signature_markers": "Tricolor flag, smoke effects, allegorical figures",
+                "canvas_info": "Monumental scale canvas, complex layering"
+            },
+            "is_featured": True,
+            "story_id": "story_liberty_leading"
+        },
+        {
+            "artwork_id": "art_girl_earring_vermeer",
+            "title": "The Milkmaid",
+            "artist": "Johannes Vermeer",
+            "year": "1658",
+            "period": "Dutch Golden Age",
+            "movement": "Baroque",
+            "medium": "Oil on canvas",
+            "dimensions": "45.5 cm × 41 cm",
+            "location": "Rijksmuseum, Amsterdam",
+            "image_url": "https://images.unsplash.com/photo-1577083552431-6e5fd01988ec?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1577083552431-6e5fd01988ec?w=400",
+            "description": "Masterpiece of light and domestic tranquility, showcasing Vermeer's technique.",
+            "provenance": [
+                {"year": "1658", "event": "Created in Delft"},
+                {"year": "1908", "event": "Acquired by Rijksmuseum"}
+            ],
+            "forensic_data": {
+                "pigments": ["Ultramarine (lapis lazuli)", "Lead-tin yellow", "Vermillion"],
+                "technique": "Pointillé highlights, camera obscura influence",
+                "signature_markers": "Left-side light source, domestic interior, stillness",
+                "canvas_info": "Small intimate scale, fine linen weave"
+            },
+            "is_featured": True,
+            "story_id": "story_milkmaid"
+        },
+        {
+            "artwork_id": "art_school_athens",
+            "title": "The School of Athens",
+            "artist": "Raphael",
+            "year": "1509-1511",
+            "period": "High Renaissance",
+            "movement": "Renaissance",
+            "medium": "Fresco",
+            "dimensions": "500 cm × 770 cm",
+            "location": "Apostolic Palace, Vatican City",
+            "image_url": "https://images.unsplash.com/photo-1533154683836-84ea7a0bc310?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1533154683836-84ea7a0bc310?w=400",
+            "description": "Monumental fresco depicting ancient philosophers, centerpiece of Vatican's Stanza della Segnatura.",
+            "provenance": [
+                {"year": "1509-1511", "event": "Commissioned by Pope Julius II"},
+                {"year": "1511", "event": "Completed in Vatican"}
+            ],
+            "forensic_data": {
+                "pigments": ["Fresco pigments", "Natural earth colors", "Ultramarine"],
+                "technique": "Buon fresco, architectural perspective, classical composition",
+                "signature_markers": "Self-portrait included, mathematical precision",
+                "canvas_info": "Wall fresco, intonaco plaster layers"
+            },
+            "is_featured": True,
+            "story_id": "story_school_athens"
+        },
+        {
+            "artwork_id": "art_garden_delights",
+            "title": "The Garden of Earthly Delights",
+            "artist": "Hieronymus Bosch",
+            "year": "1490-1510",
+            "period": "Northern Renaissance",
+            "movement": "Early Netherlandish",
+            "medium": "Oil on oak panels",
+            "dimensions": "220 cm × 389 cm (triptych open)",
+            "location": "Museo del Prado, Madrid",
+            "image_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=400",
+            "description": "Enigmatic triptych depicting paradise, earthly pleasures, and hell with surreal imagery.",
+            "provenance": [
+                {"year": "1490-1510", "event": "Created, possibly for Nassau family"},
+                {"year": "1593", "event": "Acquired by Philip II of Spain"},
+                {"year": "1939", "event": "Transferred to Prado"}
+            ],
+            "forensic_data": {
+                "pigments": ["Azurite blue", "Vermillion", "Malachite green", "Lead white"],
+                "technique": "Detailed miniature painting, symbolic imagery",
+                "signature_markers": "Fantastical creatures, moral allegory, hidden symbols",
+                "canvas_info": "Oak panel triptych, elaborate hinged design"
+            },
+            "is_featured": True,
+            "story_id": "story_garden_delights"
+        },
+        {
+            "artwork_id": "art_whistlers_mother",
+            "title": "Arrangement in Grey and Black No.1 (Whistler's Mother)",
+            "artist": "James McNeill Whistler",
+            "year": "1871",
+            "period": "Realism/Tonalism",
+            "movement": "American Tonalism",
+            "medium": "Oil on canvas",
+            "dimensions": "144.3 cm × 162.4 cm",
+            "location": "Musée d'Orsay, Paris",
+            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "description": "Iconic portrait that became a symbol of American motherhood and artistic restraint.",
+            "provenance": [
+                {"year": "1871", "event": "Created in London"},
+                {"year": "1891", "event": "Purchased by French state"}
+            ],
+            "forensic_data": {
+                "pigments": ["Ivory black", "Lead white", "Raw umber"],
+                "technique": "Tonal harmony, limited palette, Japanese influence",
+                "signature_markers": "Musical title, profile composition, restraint",
+                "canvas_info": "Large portrait format, subtle texture"
+            },
+            "is_featured": True,
+            "story_id": "story_whistlers_mother"
+        },
+        {
+            "artwork_id": "art_david_michelangelo",
+            "title": "David",
+            "artist": "Michelangelo",
+            "year": "1501-1504",
+            "period": "High Renaissance",
+            "movement": "Renaissance",
+            "medium": "Marble sculpture",
+            "dimensions": "517 cm height",
+            "location": "Galleria dell'Accademia, Florence",
+            "image_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=400",
+            "description": "Masterpiece of Renaissance sculpture depicting the biblical hero before battle with Goliath.",
+            "provenance": [
+                {"year": "1501", "event": "Commissioned by Florence Cathedral"},
+                {"year": "1504", "event": "Placed in Piazza della Signoria"},
+                {"year": "1873", "event": "Moved to Accademia Gallery"}
+            ],
+            "forensic_data": {
+                "pigments": ["Carrara marble", "Natural white stone"],
+                "technique": "Contrapposto pose, anatomical precision, psychological intensity",
+                "signature_markers": "Oversized hands and head, heroic nudity",
+                "canvas_info": "Single block Carrara marble, 17 feet tall"
+            },
+            "is_featured": True,
+            "story_id": "story_david_michelangelo"
+        },
+        {
+            "artwork_id": "art_nighthawks_hopper",
+            "title": "Nighthawks",
+            "artist": "Edward Hopper",
+            "year": "1942",
+            "period": "American Realism",
+            "movement": "American Realism",
+            "medium": "Oil on canvas",
+            "dimensions": "84.1 cm × 152.4 cm",
+            "location": "Art Institute of Chicago",
+            "image_url": "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=400",
+            "description": "Iconic image of urban isolation depicting late-night diners in New York City.",
+            "provenance": [
+                {"year": "1942", "event": "Created, inspired by Greenwich Village"},
+                {"year": "1942", "event": "Purchased by Art Institute of Chicago"}
+            ],
+            "forensic_data": {
+                "pigments": ["Chrome green", "Cadmium yellow", "Prussian blue"],
+                "technique": "Sharp geometric forms, theatrical lighting, cinematic composition",
+                "signature_markers": "No visible entrance, isolation theme, nocturnal light",
+                "canvas_info": "Horizontal panoramic format, smooth surface"
+            },
+            "is_featured": True,
+            "story_id": "story_nighthawks_hopper"
+        },
+        {
+            "artwork_id": "art_las_meninas",
+            "title": "Las Meninas (The Ladies-in-Waiting)",
+            "artist": "Diego Velázquez",
+            "year": "1656",
+            "period": "Spanish Golden Age",
+            "movement": "Baroque",
+            "medium": "Oil on canvas",
+            "dimensions": "318 cm × 276 cm",
+            "location": "Museo del Prado, Madrid",
+            "image_url": "https://images.unsplash.com/photo-1578926288207-a90a5366759d?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1578926288207-a90a5366759d?w=400",
+            "description": "Complex masterpiece of the Spanish court, considered one of the most analyzed paintings in Western art.",
+            "provenance": [
+                {"year": "1656", "event": "Created for Philip IV"},
+                {"year": "1819", "event": "Transferred to Prado Museum"}
+            ],
+            "forensic_data": {
+                "pigments": ["Lead white", "Vermillion", "Natural ultramarine", "Ochres"],
+                "technique": "Loose brushwork, atmospheric perspective, mirror reflection",
+                "signature_markers": "Self-portrait, royal family, spatial ambiguity",
+                "canvas_info": "Monumental scale, complex spatial composition"
+            },
+            "is_featured": True,
+            "story_id": "story_las_meninas_2"
+        },
+        {
+            "artwork_id": "art_son_of_man",
+            "title": "The Son of Man",
+            "artist": "René Magritte",
+            "year": "1964",
+            "period": "Surrealism",
+            "movement": "Surrealism",
+            "medium": "Oil on canvas",
+            "dimensions": "116 cm × 89 cm",
+            "location": "Private Collection (frequently exhibited)",
+            "image_url": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=400",
+            "description": "Iconic surrealist self-portrait with floating apple obscuring the face.",
+            "provenance": [
+                {"year": "1964", "event": "Created as self-portrait"},
+                {"year": "1964", "event": "Acquired by private collector"}
+            ],
+            "forensic_data": {
+                "pigments": ["Chrome green", "Cadmium red", "Lead white"],
+                "technique": "Precise realism, dreamlike juxtaposition",
+                "signature_markers": "Bowler hat, floating apple, hidden face",
+                "canvas_info": "Medium format, smooth paint application"
+            },
+            "is_featured": True,
+            "story_id": "story_son_of_man"
+        },
+        {
+            "artwork_id": "art_venus_de_milo",
+            "title": "Venus de Milo",
+            "artist": "Alexandros of Antioch",
+            "year": "130-100 BC",
+            "period": "Hellenistic",
+            "movement": "Ancient Greek",
+            "medium": "Parian marble sculpture",
+            "dimensions": "204 cm height",
+            "location": "Louvre Museum, Paris",
+            "image_url": "https://images.unsplash.com/photo-1564399580075-5dfe19c205f3?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1564399580075-5dfe19c205f3?w=400",
+            "description": "Ancient Greek masterpiece representing ideal female beauty, famous for missing arms.",
+            "provenance": [
+                {"year": "130-100 BC", "event": "Created on island of Milos"},
+                {"year": "1820", "event": "Discovered by peasant farmer"},
+                {"year": "1821", "event": "Acquired by Louvre"}
+            ],
+            "forensic_data": {
+                "pigments": ["Originally polychrome painted", "Traces of pigment remain"],
+                "technique": "Contrapposto, idealized proportions, S-curve composition",
+                "signature_markers": "Missing arms, draped lower body, serene expression",
+                "canvas_info": "Two blocks of Parian marble, metal dowels"
+            },
+            "is_featured": True,
+            "story_id": "story_venus_de_milo"
         }
     ]
     
