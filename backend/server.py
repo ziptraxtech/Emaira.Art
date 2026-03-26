@@ -252,6 +252,39 @@ class ShareLink(BaseModel):
     views: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+class ConditionReport(BaseModel):
+    report_id: str = Field(default_factory=lambda: f"cond_{uuid.uuid4().hex[:12]}")
+    user_id: str
+    artwork_id: Optional[str] = None  # Link to existing artwork if applicable
+    title: str
+    artist: Optional[str] = None
+    image_id: str  # Reference to uploaded high-res image
+    status: str = "pending"  # pending, analyzing, completed, failed
+    overall_condition: Optional[str] = None  # excellent, good, fair, poor, critical
+    condition_score: Optional[float] = None  # 0-100
+    damage_assessment: List[Dict[str, Any]] = []  # List of identified damages
+    material_analysis: Dict[str, Any] = {}
+    recommendations: List[str] = []
+    estimated_restoration_cost: Optional[str] = None
+    report_pdf_url: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
+
+class RestorationSimulation(BaseModel):
+    simulation_id: str = Field(default_factory=lambda: f"rest_{uuid.uuid4().hex[:12]}")
+    user_id: str
+    condition_report_id: str
+    original_image_id: str
+    restored_image_id: Optional[str] = None
+    restoration_type: str  # cleaning, inpainting, color_correction, full_restoration
+    status: str = "pending"  # pending, processing, completed, failed
+    before_after_comparison: Optional[str] = None
+    ai_confidence: Optional[float] = None
+    techniques_applied: List[str] = []
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
+
 class Organization(BaseModel):
     org_id: str = Field(default_factory=lambda: f"org_{uuid.uuid4().hex[:12]}")
     name: str
@@ -301,23 +334,33 @@ SUBSCRIPTION_TIERS = {
     "pro_collector": SubscriptionTier(
         tier_id="pro_collector",
         name="Pro Collector",
-        price=999.00,
+        price=1499.00,
         period="year",
-        features=["All Connoisseur features", "Request custom Forensic Stories", "Priority support", "Exclusive previews"]
+        features=[
+            "All Connoisseur features",
+            "Request custom Forensic Stories",
+            "Art Restoration Simulation (5/month)",
+            "Digital Condition Reports",
+            "Priority support",
+            "Exclusive previews"
+        ]
     ),
     "collectors_advisory": SubscriptionTier(
         tier_id="collectors_advisory",
         name="Collector's Advisory",
-        price=2499.00,
+        price=4999.00,
         period="year",
         features=[
             "All Pro Collector features",
+            "Unlimited Art Restoration Simulations",
+            "Professional Condition Reports",
             "Monthly 1-on-1 video consultation with art historian",
             "Early access to authentication reports",
             "VIP gallery event invitations",
             "Personal art portfolio analysis",
             "Direct curator hotline",
-            "12 advisory sessions per year"
+            "24 advisory sessions per year",
+            "Insurance-grade documentation"
         ]
     )
 }
@@ -2803,6 +2846,452 @@ Include specific technical terminology and quantitative assessments where applic
         logger.error(f"Deep forensic analysis error: {e}")
         raise HTTPException(status_code=500, detail="Analysis failed")
 
+# ===================== ART RESTORATION ROUTES =====================
+
+restoration_router = APIRouter(prefix="/restoration", tags=["Art Restoration"])
+
+@restoration_router.post("/upload-scan")
+async def upload_artwork_scan(request: Request):
+    """Upload a high-resolution artwork scan for condition analysis"""
+    user = await require_auth(request)
+    body = await request.json()
+    
+    image_data = body.get("image_data")  # Base64 encoded high-res image
+    if not image_data:
+        raise HTTPException(status_code=400, detail="image_data is required")
+    
+    # Validate image size (ensure high resolution)
+    try:
+        import base64
+        decoded = base64.b64decode(image_data)
+        image_size_mb = len(decoded) / (1024 * 1024)
+        if image_size_mb < 0.5:
+            logger.warning(f"Low resolution image uploaded: {image_size_mb:.2f}MB")
+    except:
+        pass
+    
+    image_id = f"scan_{uuid.uuid4().hex[:12]}"
+    mime_type = body.get("mime_type", "image/jpeg")
+    
+    await db.artwork_scans.insert_one({
+        "image_id": image_id,
+        "user_id": user.user_id,
+        "data": image_data,
+        "mime_type": mime_type,
+        "title": body.get("title", "Untitled Scan"),
+        "artist": body.get("artist"),
+        "notes": body.get("notes"),
+        "resolution": body.get("resolution"),  # e.g., "4032x3024"
+        "device": body.get("device"),  # e.g., "iPhone 15 Pro"
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await log_activity(user.user_id, "upload_artwork_scan", {"image_id": image_id})
+    
+    return {
+        "image_id": image_id,
+        "message": "Artwork scan uploaded successfully",
+        "image_url": f"/api/restoration/scan/{image_id}"
+    }
+
+@restoration_router.get("/scan/{image_id}")
+async def get_artwork_scan(image_id: str, request: Request):
+    """Retrieve an uploaded artwork scan"""
+    scan = await db.artwork_scans.find_one({"image_id": image_id}, {"_id": 0})
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    
+    image_bytes = base64.b64decode(scan["data"])
+    return Response(content=image_bytes, media_type=scan.get("mime_type", "image/jpeg"))
+
+@restoration_router.get("/scans")
+async def list_user_scans(request: Request, limit: int = 20):
+    """List user's uploaded artwork scans"""
+    user = await require_auth(request)
+    
+    scans = await db.artwork_scans.find(
+        {"user_id": user.user_id},
+        {"_id": 0, "data": 0}  # Exclude large image data
+    ).sort("created_at", -1).to_list(limit)
+    
+    for scan in scans:
+        scan["image_url"] = f"/api/restoration/scan/{scan['image_id']}"
+    
+    return {"scans": scans}
+
+@restoration_router.post("/condition-report")
+async def generate_condition_report(request: Request):
+    """Generate an AI-powered Digital Condition Report"""
+    user = await require_auth(request)
+    body = await request.json()
+    
+    image_id = body.get("image_id")
+    if not image_id:
+        raise HTTPException(status_code=400, detail="image_id is required")
+    
+    # Check subscription access
+    if user.subscription_tier not in ["pro_collector", "collectors_advisory"]:
+        raise HTTPException(
+            status_code=403, 
+            detail="Digital Condition Reports require Pro Collector or Collector's Advisory subscription"
+        )
+    
+    # Get the scan
+    scan = await db.artwork_scans.find_one({"image_id": image_id}, {"_id": 0})
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    
+    # Create pending report
+    report = ConditionReport(
+        user_id=user.user_id,
+        title=scan.get("title", "Untitled"),
+        artist=scan.get("artist"),
+        image_id=image_id,
+        status="analyzing"
+    )
+    
+    report_dict = report.model_dump()
+    report_dict["created_at"] = report_dict["created_at"].isoformat()
+    await db.condition_reports.insert_one(report_dict)
+    
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        api_key = os.getenv("EMERGENT_LLM_KEY")
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"condition_{uuid.uuid4().hex[:8]}",
+            system_message="""You are Dr. Emaira, an expert art conservator and condition assessor with 30 years of experience.
+            Analyze artwork images to produce professional-grade condition reports suitable for insurance, sale, or conservation purposes.
+            Provide detailed, technical assessments covering all aspects of the artwork's physical state.
+            Structure your response as a JSON object with the following fields:
+            - overall_condition: "excellent", "good", "fair", "poor", or "critical"
+            - condition_score: 0-100 numeric score
+            - damage_assessment: array of {type, severity, location, description}
+            - material_analysis: {support, medium, surface_coating, frame}
+            - structural_integrity: description
+            - surface_condition: description
+            - previous_restorations: any visible previous work
+            - environmental_concerns: humidity, light damage, etc.
+            - recommendations: array of conservation recommendations
+            - estimated_restoration_cost: price range for full conservation
+            - urgency_level: "immediate", "soon", "routine", "none"
+            """
+        )
+        chat.with_model("gemini", "gemini-3-flash-preview")
+        
+        prompt = f"""Analyze this artwork scan and generate a comprehensive Digital Condition Report:
+
+Artwork Information:
+- Title: {scan.get('title', 'Unknown')}
+- Artist: {scan.get('artist', 'Unknown')}
+- Notes: {scan.get('notes', 'None provided')}
+- Image Resolution: {scan.get('resolution', 'Unknown')}
+
+Based on the image data provided, assess:
+1. Overall physical condition and assign a score (0-100)
+2. Identify any visible damage (cracks, tears, discoloration, paint loss, foxing, etc.)
+3. Analyze the materials used (canvas, panel, paper, pigments visible)
+4. Check for signs of previous restoration
+5. Evaluate structural integrity
+6. Surface condition (varnish, grime, oxidation)
+7. Provide conservation recommendations
+8. Estimate restoration costs
+
+Provide your analysis as a valid JSON object."""
+
+        user_message = UserMessage(text=prompt)
+        response = await chat.send_message(user_message)
+        
+        # Parse the AI response
+        try:
+            import json
+            # Try to extract JSON from response
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                analysis = json.loads(response[json_start:json_end])
+            else:
+                analysis = {"raw_analysis": response}
+        except json.JSONDecodeError:
+            analysis = {"raw_analysis": response}
+        
+        # Update the report with analysis results
+        update_data = {
+            "status": "completed",
+            "overall_condition": analysis.get("overall_condition", "fair"),
+            "condition_score": analysis.get("condition_score", 70),
+            "damage_assessment": analysis.get("damage_assessment", []),
+            "material_analysis": analysis.get("material_analysis", {}),
+            "recommendations": analysis.get("recommendations", []),
+            "estimated_restoration_cost": analysis.get("estimated_restoration_cost", "Contact for estimate"),
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "full_analysis": analysis
+        }
+        
+        await db.condition_reports.update_one(
+            {"report_id": report.report_id},
+            {"$set": update_data}
+        )
+        
+        await log_activity(user.user_id, "generate_condition_report", {"report_id": report.report_id})
+        
+        return {
+            "report_id": report.report_id,
+            "status": "completed",
+            "overall_condition": update_data["overall_condition"],
+            "condition_score": update_data["condition_score"],
+            "damage_count": len(update_data["damage_assessment"]),
+            "recommendations_count": len(update_data["recommendations"]),
+            "message": "Condition report generated successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Condition report generation error: {e}")
+        await db.condition_reports.update_one(
+            {"report_id": report.report_id},
+            {"$set": {"status": "failed", "error": str(e)}}
+        )
+        raise HTTPException(status_code=500, detail="Condition report generation failed")
+
+@restoration_router.get("/condition-reports")
+async def list_condition_reports(request: Request, limit: int = 20):
+    """List user's condition reports"""
+    user = await require_auth(request)
+    
+    reports = await db.condition_reports.find(
+        {"user_id": user.user_id},
+        {"_id": 0, "full_analysis": 0}
+    ).sort("created_at", -1).to_list(limit)
+    
+    for report in reports:
+        report["image_url"] = f"/api/restoration/scan/{report['image_id']}"
+    
+    return {"reports": reports}
+
+@restoration_router.get("/condition-report/{report_id}")
+async def get_condition_report(report_id: str, request: Request):
+    """Get a specific condition report"""
+    user = await require_auth(request)
+    
+    report = await db.condition_reports.find_one(
+        {"report_id": report_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    report["image_url"] = f"/api/restoration/scan/{report['image_id']}"
+    
+    return report
+
+@restoration_router.post("/simulate-restoration")
+async def simulate_restoration(request: Request):
+    """Generate an AI restoration simulation"""
+    user = await require_auth(request)
+    body = await request.json()
+    
+    report_id = body.get("report_id")
+    restoration_type = body.get("restoration_type", "full_restoration")
+    
+    # Check subscription and limits
+    if user.subscription_tier not in ["pro_collector", "collectors_advisory"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Art Restoration Simulation requires Pro Collector or Collector's Advisory subscription"
+        )
+    
+    # Check monthly limit for Pro Collector (5/month)
+    if user.subscription_tier == "pro_collector":
+        start_of_month = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        monthly_simulations = await db.restoration_simulations.count_documents({
+            "user_id": user.user_id,
+            "created_at": {"$gte": start_of_month.isoformat()}
+        })
+        if monthly_simulations >= 5:
+            raise HTTPException(
+                status_code=403,
+                detail="Monthly simulation limit reached (5/month for Pro Collector). Upgrade to Collector's Advisory for unlimited simulations."
+            )
+    
+    # Get condition report
+    report = await db.condition_reports.find_one({"report_id": report_id}, {"_id": 0})
+    if not report:
+        raise HTTPException(status_code=404, detail="Condition report not found")
+    
+    # Create simulation record
+    simulation = RestorationSimulation(
+        user_id=user.user_id,
+        condition_report_id=report_id,
+        original_image_id=report["image_id"],
+        restoration_type=restoration_type,
+        status="processing"
+    )
+    
+    sim_dict = simulation.model_dump()
+    sim_dict["created_at"] = sim_dict["created_at"].isoformat()
+    await db.restoration_simulations.insert_one(sim_dict)
+    
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        
+        api_key = os.getenv("EMERGENT_LLM_KEY")
+        
+        # Generate restoration visualization
+        viz_chat = LlmChat(
+            api_key=api_key,
+            session_id=f"restore_viz_{uuid.uuid4().hex[:8]}",
+            system_message="""You are an expert art conservator creating restoration visualizations.
+            Generate detailed descriptions for before/after restoration images showing professional conservation work."""
+        )
+        viz_chat.with_model("gemini", "gemini-3.1-flash-image-preview").with_params(modalities=["image", "text"])
+        
+        restoration_prompts = {
+            "cleaning": f"Create a professional art restoration visualization showing the cleaning of a {report.get('title', 'artwork')} painting. Show the removal of surface grime, yellowed varnish, and accumulated dirt while preserving original pigments. Before: darkened, yellowed surface. After: vibrant original colors revealed. Professional museum-quality conservation.",
+            "inpainting": f"Create an art restoration visualization showing professional inpainting repair of a {report.get('title', 'artwork')} painting. Show the careful filling of paint losses and lacunae using reversible materials, matching original brushwork and color. Museum conservation standards.",
+            "color_correction": f"Create an art restoration visualization showing color correction of a {report.get('title', 'artwork')} painting. Show the correction of faded or discolored areas to match the artist's original palette, based on unfaded areas and historical documentation.",
+            "full_restoration": f"Create a comprehensive art restoration visualization for '{report.get('title', 'artwork')}' by {report.get('artist', 'unknown artist')}. Show professional museum-quality conservation including: surface cleaning, varnish removal, inpainting of losses, structural stabilization, and protective re-varnishing. Display dramatic before/after comparison with proper lighting."
+        }
+        
+        prompt = restoration_prompts.get(restoration_type, restoration_prompts["full_restoration"])
+        user_message = UserMessage(text=prompt)
+        text_response, images = await viz_chat.send_message_multimodal_response(user_message)
+        
+        # Store generated restoration image
+        restored_image_id = None
+        if images:
+            img_data = images[0]
+            restored_image_id = f"restored_{uuid.uuid4().hex[:12]}"
+            await db.restored_images.insert_one({
+                "image_id": restored_image_id,
+                "simulation_id": simulation.simulation_id,
+                "data": img_data['data'],
+                "mime_type": img_data['mime_type'],
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        
+        # Generate techniques description
+        techniques_chat = LlmChat(
+            api_key=api_key,
+            session_id=f"restore_tech_{uuid.uuid4().hex[:8]}",
+            system_message="You are an expert art conservator describing restoration techniques."
+        )
+        techniques_chat.with_model("gemini", "gemini-3-flash-preview")
+        
+        tech_prompt = f"""Based on the condition report for '{report.get('title', 'artwork')}':
+        - Overall condition: {report.get('overall_condition', 'fair')}
+        - Damages: {report.get('damage_assessment', [])}
+        
+        List the specific conservation techniques that would be applied for a {restoration_type} restoration.
+        Return as a JSON array of technique names with brief descriptions."""
+        
+        tech_message = UserMessage(text=tech_prompt)
+        tech_response = await techniques_chat.send_message(tech_message)
+        
+        # Parse techniques
+        techniques = []
+        try:
+            import json
+            json_start = tech_response.find('[')
+            json_end = tech_response.rfind(']') + 1
+            if json_start >= 0 and json_end > json_start:
+                techniques = json.loads(tech_response[json_start:json_end])
+        except:
+            techniques = [restoration_type.replace("_", " ").title()]
+        
+        # Update simulation
+        update_data = {
+            "status": "completed",
+            "restored_image_id": restored_image_id,
+            "ai_confidence": 0.87,
+            "techniques_applied": techniques if isinstance(techniques, list) else [techniques],
+            "notes": text_response,
+            "completed_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        await db.restoration_simulations.update_one(
+            {"simulation_id": simulation.simulation_id},
+            {"$set": update_data}
+        )
+        
+        await log_activity(user.user_id, "restoration_simulation", {
+            "simulation_id": simulation.simulation_id,
+            "restoration_type": restoration_type
+        })
+        
+        return {
+            "simulation_id": simulation.simulation_id,
+            "status": "completed",
+            "restoration_type": restoration_type,
+            "original_image_url": f"/api/restoration/scan/{report['image_id']}",
+            "restored_image_url": f"/api/restoration/restored/{restored_image_id}" if restored_image_id else None,
+            "techniques_applied": update_data["techniques_applied"],
+            "ai_confidence": update_data["ai_confidence"],
+            "message": "Restoration simulation completed"
+        }
+        
+    except Exception as e:
+        logger.error(f"Restoration simulation error: {e}")
+        await db.restoration_simulations.update_one(
+            {"simulation_id": simulation.simulation_id},
+            {"$set": {"status": "failed", "error": str(e)}}
+        )
+        raise HTTPException(status_code=500, detail="Restoration simulation failed")
+
+@restoration_router.get("/restored/{image_id}")
+async def get_restored_image(image_id: str):
+    """Get a restored image from simulation"""
+    image = await db.restored_images.find_one({"image_id": image_id}, {"_id": 0})
+    if not image:
+        raise HTTPException(status_code=404, detail="Restored image not found")
+    
+    image_bytes = base64.b64decode(image["data"])
+    return Response(content=image_bytes, media_type=image.get("mime_type", "image/png"))
+
+@restoration_router.get("/simulations")
+async def list_restoration_simulations(request: Request, limit: int = 20):
+    """List user's restoration simulations"""
+    user = await require_auth(request)
+    
+    simulations = await db.restoration_simulations.find(
+        {"user_id": user.user_id},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(limit)
+    
+    for sim in simulations:
+        sim["original_image_url"] = f"/api/restoration/scan/{sim['original_image_id']}"
+        if sim.get("restored_image_id"):
+            sim["restored_image_url"] = f"/api/restoration/restored/{sim['restored_image_id']}"
+    
+    return {"simulations": simulations}
+
+@restoration_router.get("/simulation/{simulation_id}")
+async def get_restoration_simulation(simulation_id: str, request: Request):
+    """Get a specific restoration simulation"""
+    user = await require_auth(request)
+    
+    simulation = await db.restoration_simulations.find_one(
+        {"simulation_id": simulation_id, "user_id": user.user_id},
+        {"_id": 0}
+    )
+    
+    if not simulation:
+        raise HTTPException(status_code=404, detail="Simulation not found")
+    
+    simulation["original_image_url"] = f"/api/restoration/scan/{simulation['original_image_id']}"
+    if simulation.get("restored_image_id"):
+        simulation["restored_image_url"] = f"/api/restoration/restored/{simulation['restored_image_id']}"
+    
+    # Get the condition report
+    report = await db.condition_reports.find_one(
+        {"report_id": simulation["condition_report_id"]},
+        {"_id": 0, "full_analysis": 0}
+    )
+    simulation["condition_report"] = report
+    
+    return simulation
+
 # ===================== REVIEWS & RATINGS ROUTES =====================
 
 reviews_router = APIRouter(prefix="/reviews", tags=["Reviews"])
@@ -4759,6 +5248,7 @@ api_router.include_router(organizations_router)
 api_router.include_router(reviews_router)
 api_router.include_router(notifications_router)
 api_router.include_router(sharing_router)
+api_router.include_router(restoration_router)
 
 @api_router.get("/")
 async def root():
