@@ -221,6 +221,37 @@ class ForensicAnalysisRequest(BaseModel):
     artwork_id: str
     analysis_type: str
 
+class Review(BaseModel):
+    review_id: str = Field(default_factory=lambda: f"review_{uuid.uuid4().hex[:12]}")
+    user_id: str
+    target_type: str  # artwork, story
+    target_id: str
+    rating: int  # 1-5 stars
+    title: Optional[str] = None
+    comment: Optional[str] = None
+    is_verified_purchase: bool = False
+    helpful_count: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class Notification(BaseModel):
+    notification_id: str = Field(default_factory=lambda: f"notif_{uuid.uuid4().hex[:12]}")
+    user_id: str
+    type: str  # purchase_confirmation, subscription_reminder, new_story, advisory_reminder, welcome
+    title: str
+    message: str
+    data: Dict[str, Any] = {}
+    is_read: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ShareLink(BaseModel):
+    share_id: str = Field(default_factory=lambda: f"share_{uuid.uuid4().hex[:8]}")
+    user_id: Optional[str] = None
+    target_type: str  # artwork, story
+    target_id: str
+    platform: Optional[str] = None  # twitter, facebook, linkedin, email, copy
+    views: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 class Organization(BaseModel):
     org_id: str = Field(default_factory=lambda: f"org_{uuid.uuid4().hex[:12]}")
     name: str
@@ -433,6 +464,18 @@ async def create_session(request: Request, response: Response):
         user_doc = new_user.model_dump()
         user_doc["created_at"] = user_doc["created_at"].isoformat()
         await db.users.insert_one(user_doc)
+        
+        # Send welcome notification for new users
+        await db.notifications.insert_one({
+            "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
+            "user_id": user_id,
+            "type": "welcome",
+            "title": "Welcome to Emaira.Art!",
+            "message": f"Hello {name}! Start exploring our collection of 50+ masterpieces with immersive VR storytelling and AI forensic analysis.",
+            "data": {"first_login": True},
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
     
     await log_activity(user_id, "login", {"method": "google_oauth"})
     
@@ -2760,6 +2803,405 @@ Include specific technical terminology and quantitative assessments where applic
         logger.error(f"Deep forensic analysis error: {e}")
         raise HTTPException(status_code=500, detail="Analysis failed")
 
+# ===================== REVIEWS & RATINGS ROUTES =====================
+
+reviews_router = APIRouter(prefix="/reviews", tags=["Reviews"])
+
+@reviews_router.get("/artwork/{artwork_id}")
+async def get_artwork_reviews(artwork_id: str, limit: int = 20):
+    """Get reviews for an artwork"""
+    reviews = await db.reviews.find(
+        {"target_type": "artwork", "target_id": artwork_id},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(limit)
+    
+    # Get user info for reviews
+    user_ids = [r["user_id"] for r in reviews]
+    users = await db.users.find(
+        {"user_id": {"$in": user_ids}},
+        {"_id": 0, "user_id": 1, "name": 1, "picture": 1}
+    ).to_list(100)
+    user_map = {u["user_id"]: u for u in users}
+    
+    for review in reviews:
+        user = user_map.get(review["user_id"], {})
+        review["user_name"] = user.get("name", "Anonymous")
+        review["user_picture"] = user.get("picture")
+    
+    # Calculate average rating
+    pipeline = [
+        {"$match": {"target_type": "artwork", "target_id": artwork_id}},
+        {"$group": {"_id": None, "avg_rating": {"$avg": "$rating"}, "count": {"$sum": 1}}}
+    ]
+    stats = await db.reviews.aggregate(pipeline).to_list(1)
+    avg_rating = stats[0]["avg_rating"] if stats else 0
+    total_reviews = stats[0]["count"] if stats else 0
+    
+    return {
+        "reviews": reviews,
+        "average_rating": round(avg_rating, 1),
+        "total_reviews": total_reviews
+    }
+
+@reviews_router.get("/story/{story_id}")
+async def get_story_reviews(story_id: str, limit: int = 20):
+    """Get reviews for a story"""
+    reviews = await db.reviews.find(
+        {"target_type": "story", "target_id": story_id},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(limit)
+    
+    user_ids = [r["user_id"] for r in reviews]
+    users = await db.users.find(
+        {"user_id": {"$in": user_ids}},
+        {"_id": 0, "user_id": 1, "name": 1, "picture": 1}
+    ).to_list(100)
+    user_map = {u["user_id"]: u for u in users}
+    
+    for review in reviews:
+        user = user_map.get(review["user_id"], {})
+        review["user_name"] = user.get("name", "Anonymous")
+        review["user_picture"] = user.get("picture")
+    
+    pipeline = [
+        {"$match": {"target_type": "story", "target_id": story_id}},
+        {"$group": {"_id": None, "avg_rating": {"$avg": "$rating"}, "count": {"$sum": 1}}}
+    ]
+    stats = await db.reviews.aggregate(pipeline).to_list(1)
+    avg_rating = stats[0]["avg_rating"] if stats else 0
+    total_reviews = stats[0]["count"] if stats else 0
+    
+    return {
+        "reviews": reviews,
+        "average_rating": round(avg_rating, 1),
+        "total_reviews": total_reviews
+    }
+
+@reviews_router.post("/")
+async def create_review(request: Request):
+    """Create a new review"""
+    user = await require_auth(request)
+    body = await request.json()
+    
+    target_type = body.get("target_type")  # artwork or story
+    target_id = body.get("target_id")
+    rating = body.get("rating")
+    
+    if not all([target_type, target_id, rating]):
+        raise HTTPException(status_code=400, detail="target_type, target_id, and rating are required")
+    
+    if rating < 1 or rating > 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+    
+    # Check if user already reviewed this item
+    existing = await db.reviews.find_one({
+        "user_id": user.user_id,
+        "target_type": target_type,
+        "target_id": target_id
+    }, {"_id": 0})
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="You have already reviewed this item")
+    
+    # Check if verified purchase
+    is_verified = False
+    if target_type == "story":
+        purchased = user.purchased_stories or []
+        is_verified = any(target_id in s for s in purchased)
+    
+    review = Review(
+        user_id=user.user_id,
+        target_type=target_type,
+        target_id=target_id,
+        rating=rating,
+        title=body.get("title"),
+        comment=body.get("comment"),
+        is_verified_purchase=is_verified
+    )
+    
+    review_dict = review.model_dump()
+    review_dict["created_at"] = review_dict["created_at"].isoformat()
+    await db.reviews.insert_one(review_dict)
+    
+    await log_activity(user.user_id, "create_review", {
+        "target_type": target_type,
+        "target_id": target_id,
+        "rating": rating
+    })
+    
+    return {"review_id": review.review_id, "message": "Review submitted successfully"}
+
+@reviews_router.delete("/{review_id}")
+async def delete_review(review_id: str, request: Request):
+    """Delete a review (owner or admin only)"""
+    user = await require_auth(request)
+    
+    review = await db.reviews.find_one({"review_id": review_id}, {"_id": 0})
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    
+    if review["user_id"] != user.user_id and user.role not in ["admin", "super_admin"]:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this review")
+    
+    await db.reviews.delete_one({"review_id": review_id})
+    return {"message": "Review deleted"}
+
+@reviews_router.post("/{review_id}/helpful")
+async def mark_review_helpful(review_id: str, request: Request):
+    """Mark a review as helpful"""
+    user = await require_auth(request)
+    
+    # Check if user already marked this review
+    existing = await db.review_helpful.find_one({
+        "user_id": user.user_id,
+        "review_id": review_id
+    })
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Already marked as helpful")
+    
+    await db.review_helpful.insert_one({
+        "user_id": user.user_id,
+        "review_id": review_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await db.reviews.update_one(
+        {"review_id": review_id},
+        {"$inc": {"helpful_count": 1}}
+    )
+    
+    return {"message": "Marked as helpful"}
+
+# ===================== NOTIFICATIONS ROUTES =====================
+
+notifications_router = APIRouter(prefix="/notifications", tags=["Notifications"])
+
+@notifications_router.get("/")
+async def get_notifications(request: Request, limit: int = 50, unread_only: bool = False):
+    """Get user's notifications"""
+    user = await require_auth(request)
+    
+    query = {"user_id": user.user_id}
+    if unread_only:
+        query["is_read"] = False
+    
+    notifications = await db.notifications.find(
+        query,
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(limit)
+    
+    unread_count = await db.notifications.count_documents({
+        "user_id": user.user_id,
+        "is_read": False
+    })
+    
+    return {
+        "notifications": notifications,
+        "unread_count": unread_count
+    }
+
+@notifications_router.post("/{notification_id}/read")
+async def mark_notification_read(notification_id: str, request: Request):
+    """Mark a notification as read"""
+    user = await require_auth(request)
+    
+    result = await db.notifications.update_one(
+        {"notification_id": notification_id, "user_id": user.user_id},
+        {"$set": {"is_read": True}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    
+    return {"message": "Notification marked as read"}
+
+@notifications_router.post("/read-all")
+async def mark_all_notifications_read(request: Request):
+    """Mark all notifications as read"""
+    user = await require_auth(request)
+    
+    await db.notifications.update_many(
+        {"user_id": user.user_id, "is_read": False},
+        {"$set": {"is_read": True}}
+    )
+    
+    return {"message": "All notifications marked as read"}
+
+async def create_notification(user_id: str, notif_type: str, title: str, message: str, data: dict = None):
+    """Helper function to create notifications"""
+    notification = Notification(
+        user_id=user_id,
+        type=notif_type,
+        title=title,
+        message=message,
+        data=data or {}
+    )
+    
+    notif_dict = notification.model_dump()
+    notif_dict["created_at"] = notif_dict["created_at"].isoformat()
+    await db.notifications.insert_one(notif_dict)
+    
+    return notification.notification_id
+
+# ===================== SOCIAL SHARING ROUTES =====================
+
+sharing_router = APIRouter(prefix="/share", tags=["Sharing"])
+
+@sharing_router.post("/artwork/{artwork_id}")
+async def create_artwork_share_link(artwork_id: str, request: Request):
+    """Create a shareable link for an artwork"""
+    body = await request.json() if request.headers.get("content-length", "0") != "0" else {}
+    
+    # Get current user if authenticated
+    user_id = None
+    try:
+        user = await get_current_user(request)
+        if user:
+            user_id = user.user_id
+    except:
+        pass
+    
+    artwork = await db.artworks.find_one({"artwork_id": artwork_id}, {"_id": 0})
+    if not artwork:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+    
+    share = ShareLink(
+        user_id=user_id,
+        target_type="artwork",
+        target_id=artwork_id,
+        platform=body.get("platform")
+    )
+    
+    share_dict = share.model_dump()
+    share_dict["created_at"] = share_dict["created_at"].isoformat()
+    await db.share_links.insert_one(share_dict)
+    
+    # Generate share URL and metadata
+    base_url = os.environ.get("FRONTEND_URL", "https://emaira.art")
+    share_url = f"{base_url}/artwork/{artwork_id}?ref={share.share_id}"
+    
+    # Open Graph metadata for social sharing
+    og_metadata = {
+        "title": f"{artwork['title']} by {artwork['artist']} | Emaira.Art",
+        "description": artwork.get("description", f"Experience the story of {artwork['title']} through immersive VR and AI forensics."),
+        "image": artwork.get("image_url", ""),
+        "url": share_url,
+        "type": "article"
+    }
+    
+    return {
+        "share_id": share.share_id,
+        "share_url": share_url,
+        "og_metadata": og_metadata,
+        "artwork": {
+            "title": artwork["title"],
+            "artist": artwork["artist"],
+            "image_url": artwork.get("image_url")
+        }
+    }
+
+@sharing_router.post("/story/{story_id}")
+async def create_story_share_link(story_id: str, request: Request):
+    """Create a shareable link for a story"""
+    body = await request.json() if request.headers.get("content-length", "0") != "0" else {}
+    
+    user_id = None
+    try:
+        user = await get_current_user(request)
+        if user:
+            user_id = user.user_id
+    except:
+        pass
+    
+    story = await db.stories.find_one({"story_id": story_id}, {"_id": 0})
+    if not story:
+        raise HTTPException(status_code=404, detail="Story not found")
+    
+    # Get artwork details
+    artwork = await db.artworks.find_one({"artwork_id": story.get("artwork_id")}, {"_id": 0})
+    
+    share = ShareLink(
+        user_id=user_id,
+        target_type="story",
+        target_id=story_id,
+        platform=body.get("platform")
+    )
+    
+    share_dict = share.model_dump()
+    share_dict["created_at"] = share_dict["created_at"].isoformat()
+    await db.share_links.insert_one(share_dict)
+    
+    base_url = os.environ.get("FRONTEND_URL", "https://emaira.art")
+    share_url = f"{base_url}/story/{story_id}?ref={share.share_id}"
+    
+    og_metadata = {
+        "title": f"{story['title']} | Emaira.Art VR Experience",
+        "description": story.get("description", "Immersive art storytelling with AI forensics."),
+        "image": artwork.get("image_url", "") if artwork else "",
+        "url": share_url,
+        "type": "article"
+    }
+    
+    return {
+        "share_id": share.share_id,
+        "share_url": share_url,
+        "og_metadata": og_metadata,
+        "story": {
+            "title": story["title"],
+            "artwork_title": artwork.get("title") if artwork else None,
+            "artist": artwork.get("artist") if artwork else None
+        }
+    }
+
+@sharing_router.get("/track/{share_id}")
+async def track_share_view(share_id: str):
+    """Track when a share link is viewed"""
+    result = await db.share_links.update_one(
+        {"share_id": share_id},
+        {"$inc": {"views": 1}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Share link not found")
+    
+    # Get the share link details
+    share = await db.share_links.find_one({"share_id": share_id}, {"_id": 0})
+    
+    return {"views": share.get("views", 1)}
+
+@sharing_router.get("/stats")
+async def get_sharing_stats(request: Request):
+    """Get sharing statistics (admin only)"""
+    await require_admin(request)
+    
+    # Total shares by platform
+    pipeline = [
+        {"$group": {"_id": "$platform", "count": {"$sum": 1}, "total_views": {"$sum": "$views"}}}
+    ]
+    platform_stats = await db.share_links.aggregate(pipeline).to_list(20)
+    
+    # Total shares by type
+    type_pipeline = [
+        {"$group": {"_id": "$target_type", "count": {"$sum": 1}, "total_views": {"$sum": "$views"}}}
+    ]
+    type_stats = await db.share_links.aggregate(type_pipeline).to_list(10)
+    
+    # Most shared artworks
+    artwork_pipeline = [
+        {"$match": {"target_type": "artwork"}},
+        {"$group": {"_id": "$target_id", "shares": {"$sum": 1}, "views": {"$sum": "$views"}}},
+        {"$sort": {"shares": -1}},
+        {"$limit": 10}
+    ]
+    top_artworks = await db.share_links.aggregate(artwork_pipeline).to_list(10)
+    
+    return {
+        "by_platform": platform_stats,
+        "by_type": type_stats,
+        "top_shared_artworks": top_artworks
+    }
+
 # ===================== DASHBOARD ROUTES =====================
 
 @dashboard_router.get("/")
@@ -4313,6 +4755,9 @@ api_router.include_router(admin_router)
 api_router.include_router(campaigns_router)
 api_router.include_router(museum_router)
 api_router.include_router(organizations_router)
+api_router.include_router(reviews_router)
+api_router.include_router(notifications_router)
+api_router.include_router(sharing_router)
 
 @api_router.get("/")
 async def root():
