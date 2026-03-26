@@ -4503,30 +4503,31 @@ async def seed_data():
             "story_id": "story_nighthawks_hopper"
         },
         {
-            "artwork_id": "art_las_meninas",
-            "title": "Las Meninas (The Ladies-in-Waiting)",
-            "artist": "Diego Velázquez",
-            "year": "1656",
-            "period": "Spanish Golden Age",
-            "movement": "Baroque",
-            "medium": "Oil on canvas",
-            "dimensions": "318 cm × 276 cm",
-            "location": "Museo del Prado, Madrid",
-            "image_url": "https://images.unsplash.com/photo-1578926288207-a90a5366759d?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578926288207-a90a5366759d?w=400",
-            "description": "Complex masterpiece of the Spanish court, considered one of the most analyzed paintings in Western art.",
+            "artwork_id": "art_the_thinker",
+            "title": "The Thinker",
+            "artist": "Auguste Rodin",
+            "year": "1904",
+            "period": "Modern",
+            "movement": "Impressionism/Realism",
+            "medium": "Bronze sculpture",
+            "dimensions": "189 cm height",
+            "location": "Musée Rodin, Paris",
+            "image_url": "https://images.unsplash.com/photo-1564399580075-5dfe19c205f3?w=800",
+            "thumbnail_url": "https://images.unsplash.com/photo-1564399580075-5dfe19c205f3?w=400",
+            "description": "Iconic bronze sculpture representing philosophy and intellectual effort, originally part of The Gates of Hell.",
             "provenance": [
-                {"year": "1656", "event": "Created for Philip IV"},
-                {"year": "1819", "event": "Transferred to Prado Museum"}
+                {"year": "1880", "event": "Original concept as part of The Gates of Hell"},
+                {"year": "1904", "event": "First large-scale bronze cast"},
+                {"year": "1922", "event": "Installed at Musée Rodin"}
             ],
             "forensic_data": {
-                "pigments": ["Lead white", "Vermillion", "Natural ultramarine", "Ochres"],
-                "technique": "Loose brushwork, atmospheric perspective, mirror reflection",
-                "signature_markers": "Self-portrait, royal family, spatial ambiguity",
-                "canvas_info": "Monumental scale, complex spatial composition"
+                "pigments": ["Bronze patina", "Copper alloys", "Tin"],
+                "technique": "Lost-wax casting, detailed surface modeling",
+                "signature_markers": "Muscular tension, contemplative pose, monumental scale",
+                "canvas_info": "Bronze cast from original plaster model"
             },
             "is_featured": True,
-            "story_id": "story_las_meninas_2"
+            "story_id": "story_the_thinker"
         },
         {
             "artwork_id": "art_son_of_man",
