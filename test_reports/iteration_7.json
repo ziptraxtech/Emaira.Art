@@ -1,0 +1,72 @@
+{
+  "summary": "Tested the newly wired Art Restoration feature (backend + frontend). Backend: 19/19 pytest assertions passed — auth gating, seeded user tier, upload/list/fetch scan, Gemini-backed condition report (completed with condition_score, damage_assessment, recommendations, estimated_restoration_cost), restoration simulation (cleaning) with simulation_id, techniques_applied and ai_confidence, and pricing tiers (pro_collector=$1499, collectors_advisory=$4999 — both increased vs prior defaults). Frontend: ProtectedRoute redirects unauth users to '/'; after setting session_token cookie, /dashboard shows Art Restoration Studio CTA card (data-testid='restoration-cta-card') and nav-restoration link; CTA navigates to /restoration; all 4 tabs (tab-upload/tab-scans/tab-reports/tab-simulations) render; Take Photo input has accept='image/*' capture='environment'; upload-btn present.",
+
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+
+  "passed_tests": [
+    "Backend: All /api/restoration/* endpoints return 401 for unauthenticated requests",
+    "Backend: GET /api/auth/me with bearer token returns seeded user (test-restoration@emaira.art, tier=collectors_advisory)",
+    "Backend: GET /api/payments/tiers returns 200 with pro_collector and collectors_advisory present",
+    "Backend: pro_collector price is $1499 (>= 1499 — increased)",
+    "Backend: collectors_advisory price is $4999 (>= 4999 — increased)",
+    "Backend: POST /api/restoration/upload-scan accepts base64 JPEG and returns image_id + image_url",
+    "Backend: GET /api/restoration/scans lists user's scans with image_url; excludes raw data",
+    "Backend: GET /api/restoration/scan/{image_id} streams image bytes (content-type image/*)",
+    "Backend: GET /api/restoration/scan/{unknown} returns 404",
+    "Backend: POST /api/restoration/condition-report generates completed report with condition_score, damage_count, recommendations_count",
+    "Backend: GET /api/restoration/condition-report/{id} returns damage_assessment[], recommendations[], estimated_restoration_cost, image_url",
+    "Backend: GET /api/restoration/condition-reports lists the generated report",
+    "Backend: POST /api/restoration/simulate-restoration (type='cleaning') returns simulation_id, restoration_type, ai_confidence, techniques_applied[]",
+    "Backend: GET /api/restoration/simulations and /api/restoration/simulation/{id} return expected shape with original_image_url and status",
+    "Frontend: Unauthenticated /restoration redirects to / (ProtectedRoute working)",
+    "Frontend: /dashboard shows restoration-cta-card and nav-restoration after cookie-based session auth",
+    "Frontend: Clicking restoration-cta-card navigates to /restoration",
+    "Frontend: /restoration renders tab-upload/tab-scans/tab-reports/tab-simulations; all tabs switch",
+    "Frontend: Take Photo input has accept='image/*' and capture='environment' (mobile camera)",
+    "Frontend: upload-btn present on Upload Scan tab"
+  ],
+
+  "test_report_links": [
+    "/app/backend/tests/test_restoration.py",
+    "/app/test_reports/pytest/pytest_restoration.xml"
+  ],
+
+  "action_items": [],
+
+  "critical_code_review_comments": [
+    "server.py is 5270 lines — strongly recommend splitting restoration_router (~440 lines) into its own module (e.g., /app/backend/routers/restoration.py) for maintainability.",
+    "restoration.upload-scan accepts arbitrary base64 without MIME sniffing or max-size cap; a malicious client could post huge payloads. Consider enforcing a hard max (e.g., 50MB) and validating via Pillow before persisting.",
+    "Condition report fallback values use hardcoded defaults (condition_score=70, overall_condition='fair') when Gemini JSON parsing fails — this could mislead users. Consider exposing a 'low_confidence' flag.",
+    "Subscription endpoint path is /api/payments/tiers but review_request mentioned /api/subscriptions/tiers — main agent should confirm the frontend & docs use the correct path.",
+    "ArtRestoration.js is ~930 lines in a single file; consider breaking into tab-level sub-components for maintainability."
+  ],
+
+  "updated_files": [
+    "/app/backend/tests/test_restoration.py"
+  ],
+
+  "success_rate": {
+    "backend": "100% (19/19 tests passed)",
+    "frontend": "100% (all requested checks passed)"
+  },
+
+  "test_credentials": "Bearer TEST_SESSION_TOKEN_RESTORATION_2026 → user test-restoration@emaira.art, tier=collectors_advisory. Seeded via /app/backend/seed_test_session.py.",
+
+  "seed_data_creation": "Test data created during the run (prefixed TEST_): one artwork_scan, one condition_report (completed), one restoration_simulation (cleaning). These remain in MongoDB for potential reuse by subsequent test runs. To clean up, the main agent can delete collections artwork_scans/condition_reports/restoration_simulations documents where user_id matches the seeded test user (email=test-restoration@emaira.art).",
+
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+
+  "context_for_next_testing_agent": "Art Restoration feature fully wired and working end-to-end. Backend endpoints at /api/restoration/* (note: subscription tiers served at /api/payments/tiers, not /api/subscriptions/tiers). Gemini calls take ~10-30s; use generous timeouts (>=90s). Seeded test user is tier=collectors_advisory so tier-gated endpoints are accessible. For Playwright tests, set cookie session_token=TEST_SESSION_TOKEN_RESTORATION_2026 on domain vr-storyteller.preview.emergentagent.com before navigating — OAuth UI flow cannot be automated.",
+
+  "rca of the issue": "N/A — no bugs encountered this iteration. Feature implementation and integration verified successful."
+}

@@ -21,7 +21,8 @@ import {
   Calendar,
   ChevronRight,
   Menu,
-  X
+  X,
+  Wand2
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -92,6 +93,7 @@ const Dashboard = () => {
 
             <div className="hidden md:flex items-center gap-8">
               <Link to="/gallery" className="nav-link text-sm font-medium">Gallery</Link>
+              <Link to="/restoration" className="nav-link text-sm font-medium" data-testid="nav-restoration">Restoration</Link>
               <Link to="/pricing" className="nav-link text-sm font-medium">Pricing</Link>
               <Link to="/dashboard" className="text-sm font-medium text-[#D4AF37]">Dashboard</Link>
             </div>
@@ -135,6 +137,31 @@ const Dashboard = () => {
               Your art journey continues. Explore new stories or review your knowledge.
             </p>
           </div>
+
+          {/* Feature Highlight — Art Restoration Studio */}
+          <Link
+            to="/restoration"
+            data-testid="restoration-cta-card"
+            className="block mb-8 card-obsidian rounded-lg p-6 border border-[#D4AF37]/30 hover:border-[#D4AF37] transition-colors group"
+          >
+            <div className="flex items-center gap-5">
+              <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-[#D4AF37] to-[#B8962F] flex items-center justify-center flex-shrink-0">
+                <Wand2 className="w-7 h-7 text-[#050505]" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-display text-xl text-[#F5F5F0] group-hover:text-[#D4AF37] transition-colors">
+                    Art Restoration Studio
+                  </h3>
+                  <Badge className="bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30 text-[10px]">NEW</Badge>
+                </div>
+                <p className="text-sm text-[#A8A8A0]">
+                  Scan artworks with your mobile camera for AI-powered digital condition reports and restoration simulations.
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-[#A8A8A0] group-hover:text-[#D4AF37] transition-colors" />
+            </div>
+          </Link>
 
           {/* Stats Cards */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

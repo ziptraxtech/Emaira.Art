@@ -18,6 +18,7 @@ import AboutUs from "@/pages/AboutUs";
 import OurTechnology from "@/pages/OurTechnology";
 import Events from "@/pages/Events";
 import CRMDashboard from "@/pages/CRMDashboard";
+import ArtRestoration from "@/pages/ArtRestoration";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -140,6 +141,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <VRExperience />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/restoration"
+        element={
+          <ProtectedRoute>
+            <ArtRestoration />
           </ProtectedRoute>
         }
       />
