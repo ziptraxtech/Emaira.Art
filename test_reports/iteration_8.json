@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 8 — validated (a) new public /api/artworks/cache/{artwork_id} endpoint for all 50 seeded masterpieces, (b) Pricing RestorationTeaser before/after widget, (c) Gallery using local cached image URLs. Backend: 57/58 pytest tests passed. Frontend: all data-testid hooks present, Starry Night teaser image loads, 20/20 gallery images load via /api/artworks/cache/ with object-contain + aspect-[3/4] + bg-[#1a1a18].",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/artworks/cache/{artwork_id}",
+        "issue": "Cache-Control header sent by backend ('public, max-age=31536000, immutable') is OVERRIDDEN by the Kubernetes ingress/preview proxy to 'no-store, no-cache, must-revalidate' when accessed via the public preview URL. Verified locally: curl to http://localhost:8001 returns a JPEG body but the proxy replaces response headers. Backend code at /app/backend/server.py:1617-1621 is correct; the ingress is the culprit. This will not affect functional behavior (images still load), only browser-side long-term caching. Likely harmless in preview environment but should be confirmed on production deployment where ingress config may differ."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_artwork_cache.py",
+    "/app/test_reports/pytest/pytest_artwork_cache.xml"
+  ],
+  "action_items": [
+    "(Optional, low priority) Verify Cache-Control: public, max-age=31536000, immutable is preserved on production ingress. In preview environment, ingress rewrites it to no-store. The upstream backend response is correct — this is a proxy-layer behavior, not a code bug."
+  ],
+  "critical_code_review_comments": [
+    "server.py: /api/artworks/cache/{artwork_id} uses regex ^[a-z0-9_]+$ to prevent path-traversal — good. FileResponse used with explicit media_type — good.",
+    "server.py is 5292 lines — exceeds the 700-line guideline; recommend splitting into routers per domain (artworks, auth, payments, restoration, advisory) in a future refactor.",
+    "Gallery cards use aspect-[3/4] + bg-[#1a1a18] + object-contain as required; images are referrer-no-referrer and lazy-loaded — good."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_artwork_cache.py (new)"
+  ],
+  "success_rate": {
+    "backend": "98% (57/58 tests passing; the single failure is infra/ingress-level header rewrite, not a code defect)",
+    "frontend": "100% (teaser mounted with all testids, Starry Night image loaded, 20/20 gallery artworks rendered via local cache endpoint, card styles match spec)"
+  },
+  "test_credentials": "Bearer TEST_SESSION_TOKEN_RESTORATION_2026 (from /app/memory/test_credentials.md) used for authenticated regression endpoints.",
+  "seed_data_creation": "None — relied on pre-existing seeded artworks and session token.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend /api/artworks/cache/{artwork_id} works end-to-end for all 50 artwork_ids (valid JPEG bytes, > 5000 bytes each). The only failing assertion is Cache-Control header — the backend emits it correctly but the preview ingress rewrites to no-store. If this becomes a production concern, investigate at ingress/CDN layer. Gallery and Pricing pages both render correctly with data-testid hooks restoration-teaser, restoration-teaser-slider, restoration-teaser-upgrade. All 50 cached JPEGs exist at /app/backend/cache/artworks/.",
+  "rca of the issue": "Cache-Control header override: FastAPI FileResponse sets correct headers (verified via localhost:8001). The Kubernetes ingress controller / preview proxy injects `Cache-Control: no-store, no-cache, must-revalidate` on all responses before returning to client. This is a known-safe default for preview environments. No code change required unless production deployment also exhibits the same override."
+}

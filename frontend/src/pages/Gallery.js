@@ -205,11 +205,13 @@ const Gallery = () => {
                   data-testid={`artwork-card-${artwork.artwork_id}`}
                 >
                   <div className="card-ivory rounded-lg overflow-hidden">
-                    <div className="relative aspect-[3/4]">
+                    <div className="relative aspect-[3/4] bg-[#1a1a18]">
                       <img 
                         src={artwork.thumbnail_url || artwork.image_url}
                         alt={artwork.title}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-[#1A1A18]/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                       

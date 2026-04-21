@@ -1,10 +1,11 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import re
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional, Dict, Any
@@ -1598,6 +1599,26 @@ async def get_uploaded_image(image_id: str):
     
     image_bytes = base64.b64decode(image_doc["data"])
     return Response(content=image_bytes, media_type=image_doc.get("mime_type", "image/jpeg"))
+
+
+# Local cache of seeded masterpiece images (downloaded from Wikimedia once
+# via download_artwork_cache.py, served directly from disk with long-lived
+# browser caching).
+ARTWORK_CACHE_DIR = Path(__file__).parent / "cache" / "artworks"
+
+@artworks_router.get("/cache/{artwork_id}")
+async def get_cached_artwork_image(artwork_id: str):
+    """Serve a locally-cached masterpiece image for a seeded artwork."""
+    if not re.match(r"^[a-z0-9_]+$", artwork_id):
+        raise HTTPException(status_code=400, detail="Invalid artwork_id")
+    path = ARTWORK_CACHE_DIR / f"{artwork_id}.jpg"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Cached image not found")
+    return FileResponse(
+        path,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 # ===================== ADVISORY SESSIONS ROUTES =====================
 
@@ -3764,8 +3785,8 @@ async def seed_data():
             "medium": "Oil on poplar panel",
             "dimensions": "77 cm × 53 cm",
             "location": "Louvre Museum, Paris",
-            "image_url": "https://images.unsplash.com/photo-1423742774270-6884aac775fa?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1423742774270-6884aac775fa?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg/800px-Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg/800px-Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg",
             "description": "The most famous portrait in the world, known for her enigmatic smile and Leonardo's masterful sfumato technique.",
             "provenance": [
                 {"year": "1519", "event": "Inherited by Salai, Leonardo's assistant"},
@@ -3793,8 +3814,8 @@ async def seed_data():
             "medium": "Tempera and oil on gesso",
             "dimensions": "460 cm × 880 cm",
             "location": "Santa Maria delle Grazie, Milan",
-            "image_url": "https://images.unsplash.com/photo-1574182245530-967d9b3831af?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1574182245530-967d9b3831af?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/The_Last_Supper_-_Leonardo_Da_Vinci_-_High_Resolution_32x16.jpg/800px-The_Last_Supper_-_Leonardo_Da_Vinci_-_High_Resolution_32x16.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/The_Last_Supper_-_Leonardo_Da_Vinci_-_High_Resolution_32x16.jpg/800px-The_Last_Supper_-_Leonardo_Da_Vinci_-_High_Resolution_32x16.jpg",
             "description": "Leonardo's monumental mural depicting Christ's final meal with his disciples.",
             "provenance": [
                 {"year": "1498", "event": "Completed in refectory"},
@@ -3819,8 +3840,8 @@ async def seed_data():
             "medium": "Fresco",
             "dimensions": "280 cm × 570 cm",
             "location": "Sistine Chapel, Vatican City",
-            "image_url": "https://images.unsplash.com/photo-1562604609-b9c81e714a78?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1562604609-b9c81e714a78?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Michelangelo_-_Creation_of_Adam_%28cropped%29.jpg/800px-Michelangelo_-_Creation_of_Adam_%28cropped%29.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Michelangelo_-_Creation_of_Adam_%28cropped%29.jpg/800px-Michelangelo_-_Creation_of_Adam_%28cropped%29.jpg",
             "description": "The iconic image of God giving life to Adam on the Sistine Chapel ceiling.",
             "provenance": [
                 {"year": "1512", "event": "Completed on Sistine ceiling"},
@@ -3845,8 +3866,8 @@ async def seed_data():
             "medium": "Tempera on canvas",
             "dimensions": "172.5 cm × 278.5 cm",
             "location": "Uffizi Gallery, Florence",
-            "image_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Sandro_Botticelli_-_La_nascita_di_Venere_-_Google_Art_Project_-_edited.jpg/800px-Sandro_Botticelli_-_La_nascita_di_Venere_-_Google_Art_Project_-_edited.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Sandro_Botticelli_-_La_nascita_di_Venere_-_Google_Art_Project_-_edited.jpg/800px-Sandro_Botticelli_-_La_nascita_di_Venere_-_Google_Art_Project_-_edited.jpg",
             "description": "Venus emerging from the sea as a fully grown woman.",
             "provenance": [
                 {"year": "1485", "event": "Commissioned by Medici"},
@@ -3871,8 +3892,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "44.5 cm × 39 cm",
             "location": "Mauritshuis, The Hague",
-            "image_url": "https://images.unsplash.com/photo-1578321272176-b7bbc0679853?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578321272176-b7bbc0679853?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/1665_Girl_with_a_Pearl_Earring.jpg/800px-1665_Girl_with_a_Pearl_Earring.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/1665_Girl_with_a_Pearl_Earring.jpg/800px-1665_Girl_with_a_Pearl_Earring.jpg",
             "description": "Often called the 'Mona Lisa of the North'.",
             "provenance": [
                 {"year": "1881", "event": "Purchased for 2 guilders"},
@@ -3897,8 +3918,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "363 cm × 437 cm",
             "location": "Rijksmuseum, Amsterdam",
-            "image_url": "https://images.unsplash.com/photo-1577720643272-265f09367456?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1577720643272-265f09367456?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/La_ronda_de_noche%2C_por_Rembrandt_van_Rijn.jpg/800px-La_ronda_de_noche%2C_por_Rembrandt_van_Rijn.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/La_ronda_de_noche%2C_por_Rembrandt_van_Rijn.jpg/800px-La_ronda_de_noche%2C_por_Rembrandt_van_Rijn.jpg",
             "description": "Rembrandt's masterpiece depicting a militia company in dramatic action.",
             "provenance": [
                 {"year": "1642", "event": "Commissioned by militia"},
@@ -3924,8 +3945,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "318 cm × 276 cm",
             "location": "Museo del Prado, Madrid",
-            "image_url": "https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/Las_Meninas%2C_by_Diego_Vel%C3%A1zquez%2C_from_Prado_in_Google_Earth.jpg/800px-Las_Meninas%2C_by_Diego_Vel%C3%A1zquez%2C_from_Prado_in_Google_Earth.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/Las_Meninas%2C_by_Diego_Vel%C3%A1zquez%2C_from_Prado_in_Google_Earth.jpg/800px-Las_Meninas%2C_by_Diego_Vel%C3%A1zquez%2C_from_Prado_in_Google_Earth.jpg",
             "description": "A complex composition featuring Infanta Margarita Teresa.",
             "provenance": [
                 {"year": "1656", "event": "Painted for Philip IV"},
@@ -3950,8 +3971,8 @@ async def seed_data():
             "medium": "Oil on oak panel",
             "dimensions": "82.2 cm × 60 cm",
             "location": "National Gallery, London",
-            "image_url": "https://images.unsplash.com/photo-1578301978162-7aae4d755744?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578301978162-7aae4d755744?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/The_Arnolfini_portrait_%281434%29.jpg/800px-The_Arnolfini_portrait_%281434%29.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/The_Arnolfini_portrait_%281434%29.jpg/800px-The_Arnolfini_portrait_%281434%29.jpg",
             "description": "Revolutionary double portrait showcasing oil painting mastery.",
             "provenance": [
                 {"year": "1434", "event": "Painted in Bruges"},
@@ -3977,8 +3998,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "73.7 cm × 92.1 cm",
             "location": "Museum of Modern Art, New York",
-            "image_url": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg/800px-Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg/800px-Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg",
             "description": "Painted at the asylum depicting a swirling night sky.",
             "provenance": [
                 {"year": "1889", "event": "Painted at asylum"},
@@ -4003,8 +4024,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "80.7 cm × 65.3 cm",
             "location": "Kröller-Müller Museum",
-            "image_url": "https://images.unsplash.com/photo-1579783901586-d88db74b4fe4?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1579783901586-d88db74b4fe4?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Vincent_van_Gogh_%281853-1890%29_Caf%C3%A9terras_bij_nacht_%28place_du_Forum%29_Kr%C3%B6ller-M%C3%BCller_Museum_Otterlo_23-8-2016_13-35-40.JPG/800px-Vincent_van_Gogh_%281853-1890%29_Caf%C3%A9terras_bij_nacht_%28place_du_Forum%29_Kr%C3%B6ller-M%C3%BCller_Museum_Otterlo_23-8-2016_13-35-40.JPG",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Vincent_van_Gogh_%281853-1890%29_Caf%C3%A9terras_bij_nacht_%28place_du_Forum%29_Kr%C3%B6ller-M%C3%BCller_Museum_Otterlo_23-8-2016_13-35-40.JPG/800px-Vincent_van_Gogh_%281853-1890%29_Caf%C3%A9terras_bij_nacht_%28place_du_Forum%29_Kr%C3%B6ller-M%C3%BCller_Museum_Otterlo_23-8-2016_13-35-40.JPG",
             "description": "A nocturnal scene painted without black pigment.",
             "provenance": [
                 {"year": "1888", "event": "Painted in Arles"},
@@ -4029,8 +4050,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "89.9 cm × 94.1 cm",
             "location": "Art Institute of Chicago",
-            "image_url": "https://images.unsplash.com/photo-1580136579312-94651dfd596d?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1580136579312-94651dfd596d?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Reflections_of_Clouds_on_the_Water-Lily_Pond.jpg/800px-Reflections_of_Clouds_on_the_Water-Lily_Pond.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Reflections_of_Clouds_on_the_Water-Lily_Pond.jpg/800px-Reflections_of_Clouds_on_the_Water-Lily_Pond.jpg",
             "description": "Part of Monet's famous series from Giverny.",
             "provenance": [
                 {"year": "1906", "event": "Painted at Giverny"},
@@ -4055,8 +4076,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "48 cm × 63 cm",
             "location": "Musée Marmottan Monet, Paris",
-            "image_url": "https://images.unsplash.com/photo-1578301978018-3005759f48f7?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578301978018-3005759f48f7?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/Monet_-_Impression%2C_Sunrise.jpg/800px-Monet_-_Impression%2C_Sunrise.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/Monet_-_Impression%2C_Sunrise.jpg/800px-Monet_-_Impression%2C_Sunrise.jpg",
             "description": "The painting that gave Impressionism its name.",
             "provenance": [
                 {"year": "1874", "event": "First Impressionist exhibition"},
@@ -4081,8 +4102,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "207.6 cm × 308 cm",
             "location": "Art Institute of Chicago",
-            "image_url": "https://images.unsplash.com/photo-1578926288207-a90a5366759d?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578926288207-a90a5366759d?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/A_Sunday_on_La_Grande_Jatte%2C_Georges_Seurat%2C_1884.jpg/800px-A_Sunday_on_La_Grande_Jatte%2C_Georges_Seurat%2C_1884.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/A_Sunday_on_La_Grande_Jatte%2C_Georges_Seurat%2C_1884.jpg/800px-A_Sunday_on_La_Grande_Jatte%2C_Georges_Seurat%2C_1884.jpg",
             "description": "The masterpiece of Pointillism.",
             "provenance": [
                 {"year": "1886", "event": "Final Impressionist exhibition"},
@@ -4107,8 +4128,8 @@ async def seed_data():
             "medium": "Oil and gold leaf on canvas",
             "dimensions": "180 cm × 180 cm",
             "location": "Belvedere, Vienna",
-            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/The_Kiss_-_Gustav_Klimt_-_Google_Cultural_Institute.jpg/800px-The_Kiss_-_Gustav_Klimt_-_Google_Cultural_Institute.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/The_Kiss_-_Gustav_Klimt_-_Google_Cultural_Institute.jpg/800px-The_Kiss_-_Gustav_Klimt_-_Google_Cultural_Institute.jpg",
             "description": "Klimt's masterpiece of the Golden Phase.",
             "provenance": [
                 {"year": "1908", "event": "Exhibited at Kunstschau"},
@@ -4134,8 +4155,8 @@ async def seed_data():
             "medium": "Tempera and crayon on cardboard",
             "dimensions": "91 cm × 73.5 cm",
             "location": "National Gallery, Oslo",
-            "image_url": "https://images.unsplash.com/photo-1579541814924-49fef17c5be5?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1579541814924-49fef17c5be5?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Edvard_Munch%2C_1893%2C_The_Scream%2C_oil%2C_tempera_and_pastel_on_cardboard%2C_91_x_73_cm%2C_National_Gallery_of_Norway.jpg/800px-Edvard_Munch%2C_1893%2C_The_Scream%2C_oil%2C_tempera_and_pastel_on_cardboard%2C_91_x_73_cm%2C_National_Gallery_of_Norway.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Edvard_Munch%2C_1893%2C_The_Scream%2C_oil%2C_tempera_and_pastel_on_cardboard%2C_91_x_73_cm%2C_National_Gallery_of_Norway.jpg/800px-Edvard_Munch%2C_1893%2C_The_Scream%2C_oil%2C_tempera_and_pastel_on_cardboard%2C_91_x_73_cm%2C_National_Gallery_of_Norway.jpg",
             "description": "Iconic image of modern anxiety.",
             "provenance": [
                 {"year": "1893", "event": "Created for Frieze of Life"},
@@ -4161,8 +4182,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "24 cm × 33 cm",
             "location": "Museum of Modern Art, New York",
-            "image_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/d/dd/The_Persistence_of_Memory.jpg/800px-The_Persistence_of_Memory.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/d/dd/The_Persistence_of_Memory.jpg/800px-The_Persistence_of_Memory.jpg",
             "description": "Dalí's iconic melting watches.",
             "provenance": [
                 {"year": "1931", "event": "First exhibited in Paris"},
@@ -4187,8 +4208,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "349 cm × 776 cm",
             "location": "Museo Reina Sofía, Madrid",
-            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/7/74/PicassoGuernica.jpg/800px-PicassoGuernica.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/7/74/PicassoGuernica.jpg/800px-PicassoGuernica.jpg",
             "description": "Powerful anti-war statement.",
             "provenance": [
                 {"year": "1937", "event": "Created for Paris World's Fair"},
@@ -4213,8 +4234,8 @@ async def seed_data():
             "medium": "Oil on beaverboard",
             "dimensions": "78 cm × 65.3 cm",
             "location": "Art Institute of Chicago",
-            "image_url": "https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Grant_Wood_-_American_Gothic_-_Google_Art_Project.jpg/800px-Grant_Wood_-_American_Gothic_-_Google_Art_Project.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/Grant_Wood_-_American_Gothic_-_Google_Art_Project.jpg/800px-Grant_Wood_-_American_Gothic_-_Google_Art_Project.jpg",
             "description": "Iconic image of rural America.",
             "provenance": [
                 {"year": "1930", "event": "Won bronze medal"},
@@ -4239,8 +4260,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "84.1 cm × 152.4 cm",
             "location": "Art Institute of Chicago",
-            "image_url": "https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Nighthawks_by_Edward_Hopper_1942.jpg/800px-Nighthawks_by_Edward_Hopper_1942.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Nighthawks_by_Edward_Hopper_1942.jpg/800px-Nighthawks_by_Edward_Hopper_1942.jpg",
             "description": "Iconic image of urban isolation.",
             "provenance": [
                 {"year": "1942", "event": "Completed after Pearl Harbor"},
@@ -4265,8 +4286,8 @@ async def seed_data():
             "medium": "Woodblock print",
             "dimensions": "25.7 cm × 37.9 cm",
             "location": "Multiple collections",
-            "image_url": "https://images.unsplash.com/photo-1545569341-9eb8b30979d9?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1545569341-9eb8b30979d9?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Tsunami_by_hokusai_19th_century.jpg/800px-Tsunami_by_hokusai_19th_century.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Tsunami_by_hokusai_19th_century.jpg/800px-Tsunami_by_hokusai_19th_century.jpg",
             "description": "The most recognized Japanese artwork.",
             "provenance": [
                 {"year": "1831", "event": "Published in Thirty-six Views series"},
@@ -4292,8 +4313,8 @@ async def seed_data():
             "medium": "Synthetic polymer paint on canvas",
             "dimensions": "51 cm × 41 cm each (32 canvases)",
             "location": "Museum of Modern Art, New York",
-            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Campbell%27s_Soup_Cans_by_Andy_Warhol.jpg/800px-Campbell%27s_Soup_Cans_by_Andy_Warhol.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a3/Campbell%27s_Soup_Cans_by_Andy_Warhol.jpg/800px-Campbell%27s_Soup_Cans_by_Andy_Warhol.jpg",
             "description": "Warhol's iconic Pop Art statement on consumer culture.",
             "provenance": [
                 {"year": "1962", "event": "First exhibited at Ferus Gallery, LA"},
@@ -4318,8 +4339,8 @@ async def seed_data():
             "medium": "Acrylic and silkscreen on canvas",
             "dimensions": "205.4 cm × 289.6 cm",
             "location": "Tate Modern, London",
-            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/8/87/Marilyndiptych.jpg/800px-Marilyndiptych.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/8/87/Marilyndiptych.jpg/800px-Marilyndiptych.jpg",
             "description": "50 images of Marilyn Monroe exploring fame and mortality.",
             "provenance": [
                 {"year": "1962", "event": "Created after Monroe's death"},
@@ -4344,8 +4365,8 @@ async def seed_data():
             "medium": "Oil and synthetic polymer on canvas",
             "dimensions": "171.6 cm × 169.5 cm",
             "location": "Museum of Modern Art, New York",
-            "image_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/d/df/Roy_Lichtenstein_Drowning_Girl.jpg/800px-Roy_Lichtenstein_Drowning_Girl.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/d/df/Roy_Lichtenstein_Drowning_Girl.jpg/800px-Roy_Lichtenstein_Drowning_Girl.jpg",
             "description": "Comic-book style melodrama elevated to fine art.",
             "provenance": [
                 {"year": "1963", "event": "Created based on DC Comics panel"},
@@ -4370,8 +4391,8 @@ async def seed_data():
             "medium": "Oil on fiberboard",
             "dimensions": "244 cm × 122 cm",
             "location": "Private Collection",
-            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4a/No._5%2C_1948.jpg/800px-No._5%2C_1948.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/4/4a/No._5%2C_1948.jpg/800px-No._5%2C_1948.jpg",
             "description": "Quintessential drip painting, sold for $140 million in 2006.",
             "provenance": [
                 {"year": "1948", "event": "Created in Springs, Long Island"},
@@ -4396,8 +4417,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "236.2 cm × 206.4 cm",
             "location": "Private Collection",
-            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/9/97/Orange%2C_Red%2C_Yellow.jpg/800px-Orange%2C_Red%2C_Yellow.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/9/97/Orange%2C_Red%2C_Yellow.jpg/800px-Orange%2C_Red%2C_Yellow.jpg",
             "description": "Luminous color field painting sold for $86.9 million.",
             "provenance": [
                 {"year": "1961", "event": "Created in New York studio"},
@@ -4422,8 +4443,8 @@ async def seed_data():
             "medium": "Mirror-polished stainless steel",
             "dimensions": "307 cm × 363 cm × 114 cm",
             "location": "Private Collection",
-            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/6/65/Balloon_Dog_%28Blue%29_by_Jeff_Koons%2C_The_Broad.jpg/800px-Balloon_Dog_%28Blue%29_by_Jeff_Koons%2C_The_Broad.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/6/65/Balloon_Dog_%28Blue%29_by_Jeff_Koons%2C_The_Broad.jpg/800px-Balloon_Dog_%28Blue%29_by_Jeff_Koons%2C_The_Broad.jpg",
             "description": "Monumental sculpture sold for $58.4 million in 2013.",
             "provenance": [
                 {"year": "2000", "event": "Completed as part of Celebration series"},
@@ -4448,8 +4469,8 @@ async def seed_data():
             "medium": "Stencil spray paint",
             "dimensions": "Variable",
             "location": "Multiple locations/Private",
-            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/7/77/Girl_with_balloon.jpg/800px-Girl_with_balloon.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/7/77/Girl_with_balloon.jpg/800px-Girl_with_balloon.jpg",
             "description": "Iconic stencil that self-destructed at Sotheby's auction in 2018.",
             "provenance": [
                 {"year": "2002", "event": "First appeared on London wall"},
@@ -4474,8 +4495,8 @@ async def seed_data():
             "medium": "Tiger shark, glass, steel, formaldehyde",
             "dimensions": "213 cm × 518 cm × 213 cm",
             "location": "Private Collection",
-            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/3/38/Hirst-Shark.jpg/800px-Hirst-Shark.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/3/38/Hirst-Shark.jpg/800px-Hirst-Shark.jpg",
             "description": "Preserved shark that defined YBA movement, sold for $12 million.",
             "provenance": [
                 {"year": "1991", "event": "Commissioned by Charles Saatchi"},
@@ -4501,8 +4522,8 @@ async def seed_data():
             "medium": "Silkscreen ink and acrylic on linen",
             "dimensions": "101.6 cm × 101.6 cm",
             "location": "Private Collection",
-            "image_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/5/5c/Shot_Marilyns.jpg/800px-Shot_Marilyns.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/5/5c/Shot_Marilyns.jpg/800px-Shot_Marilyns.jpg",
             "description": "Iconic Pop Art portrait sold for $195 million in 2022, the most expensive American artwork ever sold.",
             "provenance": [
                 {"year": "1964", "event": "Created as part of Marilyn series"},
@@ -4528,8 +4549,8 @@ async def seed_data():
             "medium": "Acrylic and oilstick on canvas",
             "dimensions": "205.7 cm × 175.9 cm",
             "location": "Private Collection",
-            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/1/11/Untitled-Head-Jean-Michel_Basquiat-1981.jpg/800px-Untitled-Head-Jean-Michel_Basquiat-1981.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/1/11/Untitled-Head-Jean-Michel_Basquiat-1981.jpg/800px-Untitled-Head-Jean-Michel_Basquiat-1981.jpg",
             "description": "Powerful skull painting sold for $110.5 million in 2017.",
             "provenance": [
                 {"year": "1981", "event": "Created in New York"},
@@ -4554,8 +4575,8 @@ async def seed_data():
             "medium": "Acrylic on canvas",
             "dimensions": "242.5 cm × 243.9 cm",
             "location": "Tate Modern, London",
-            "image_url": "https://images.unsplash.com/photo-1571115764595-644a1f56a55c?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1571115764595-644a1f56a55c?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/5/53/Hockney%2C_A_Bigger_Splash.jpg/800px-Hockney%2C_A_Bigger_Splash.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/5/53/Hockney%2C_A_Bigger_Splash.jpg/800px-Hockney%2C_A_Bigger_Splash.jpg",
             "description": "Iconic California pool painting capturing a single moment of splash.",
             "provenance": [
                 {"year": "1967", "event": "Created in Los Angeles"},
@@ -4580,8 +4601,8 @@ async def seed_data():
             "medium": "Mixed media installation",
             "dimensions": "Variable",
             "location": "Multiple Museums Worldwide",
-            "image_url": "https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1518998053901-5348d3961a04?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Yayoi_Kusama_Obliteration_Room.jpg/800px-Yayoi_Kusama_Obliteration_Room.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/Yayoi_Kusama_Obliteration_Room.jpg/800px-Yayoi_Kusama_Obliteration_Room.jpg",
             "description": "Immersive installation creating infinite reflections, exploring themes of obsession and infinity.",
             "provenance": [
                 {"year": "1965", "event": "First Infinity Room created"},
@@ -4598,26 +4619,27 @@ async def seed_data():
         },
         {
             "artwork_id": "art_kaws_companion",
-            "title": "COMPANION (Resting Place)",
-            "artist": "KAWS",
-            "year": "2013",
-            "period": "Contemporary",
-            "movement": "Street Art/Pop Surrealism",
-            "medium": "Fiberglass and bronze",
-            "dimensions": "Variable editions",
-            "location": "Various Collections",
-            "image_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578926375605-eaf7559b1458?w=400",
-            "description": "Iconic cartoon-inspired figure exploring themes of isolation and companionship.",
+            "title": "The Fighting Temeraire",
+            "artist": "J.M.W. Turner",
+            "year": "1839",
+            "period": "Romanticism",
+            "movement": "British Romanticism",
+            "medium": "Oil on canvas",
+            "dimensions": "90.7 cm × 121.6 cm",
+            "location": "The National Gallery, London",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/The_Fighting_Temeraire%2C_JMW_Turner%2C_National_Gallery.jpg/800px-The_Fighting_Temeraire%2C_JMW_Turner%2C_National_Gallery.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/The_Fighting_Temeraire%2C_JMW_Turner%2C_National_Gallery.jpg/800px-The_Fighting_Temeraire%2C_JMW_Turner%2C_National_Gallery.jpg",
+            "description": "Turner's elegiac depiction of the retired warship HMS Temeraire being towed to its final berth, symbolizing the twilight of the age of sail.",
             "provenance": [
-                {"year": "2013", "event": "Created as part of ongoing COMPANION series"},
-                {"year": "2019", "event": "Major museum retrospective"}
+                {"year": "1839", "event": "Exhibited at the Royal Academy"},
+                {"year": "1856", "event": "Bequeathed by Turner to the nation"},
+                {"year": "2005", "event": "Voted Britain's greatest painting"}
             ],
             "forensic_data": {
-                "pigments": ["Industrial paint", "Resin coating"],
-                "technique": "3D modeling, industrial fabrication",
-                "signature_markers": "X eyes, cartoonish proportions, emotional resonance",
-                "canvas_info": "Fiberglass or bronze, factory-produced"
+                "pigments": ["Chrome yellow", "Prussian blue", "Vermilion", "Lead white"],
+                "technique": "Layered glazes, atmospheric perspective, luminous skies",
+                "signature_markers": "Turner's signature golden sunset, atmospheric dissolution",
+                "canvas_info": "Linen canvas, tightly woven, double-primed"
             },
             "is_featured": True,
             "story_id": "story_kaws_companion"
@@ -4632,8 +4654,8 @@ async def seed_data():
             "medium": "Hand-painted porcelain",
             "dimensions": "100 million seeds",
             "location": "Tate Modern (original installation)",
-            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d9/Ai_Weiwei%27s_Sunflower_Seeds%2C_Tate_Modern.jpg/800px-Ai_Weiwei%27s_Sunflower_Seeds%2C_Tate_Modern.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d9/Ai_Weiwei%27s_Sunflower_Seeds%2C_Tate_Modern.jpg/800px-Ai_Weiwei%27s_Sunflower_Seeds%2C_Tate_Modern.jpg",
             "description": "Installation of 100 million hand-painted porcelain sunflower seeds exploring mass production and individuality.",
             "provenance": [
                 {"year": "2010", "event": "Created with 1,600 artisans in Jingdezhen"},
@@ -4658,8 +4680,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "300 cm × 250 cm",
             "location": "Private Collection",
-            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Gerhard_Richter%2C_Prague_%282017%29.jpg/800px-Gerhard_Richter%2C_Prague_%282017%29.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Gerhard_Richter%2C_Prague_%282017%29.jpg/800px-Gerhard_Richter%2C_Prague_%282017%29.jpg",
             "description": "Masterwork of squeegee abstraction sold for over $46 million.",
             "provenance": [
                 {"year": "1986", "event": "Created in Cologne studio"},
@@ -4684,8 +4706,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "198 cm × 147.5 cm (each panel)",
             "location": "Private Collection",
-            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/3/31/Three_Studies_of_Lucian_Freud.jpg/800px-Three_Studies_of_Lucian_Freud.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/3/31/Three_Studies_of_Lucian_Freud.jpg/800px-Three_Studies_of_Lucian_Freud.jpg",
             "description": "Powerful triptych portrait sold for $142.4 million in 2013.",
             "provenance": [
                 {"year": "1969", "event": "Created depicting friend Lucian Freud"},
@@ -4710,8 +4732,8 @@ async def seed_data():
             "medium": "Bronze, stainless steel, marble",
             "dimensions": "927 cm × 891 cm × 1024 cm",
             "location": "Multiple casts worldwide",
-            "image_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1541367777708-7905fe3296c0?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Giant_spider_strikes_again%21.jpg/800px-Giant_spider_strikes_again%21.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Giant_spider_strikes_again%21.jpg/800px-Giant_spider_strikes_again%21.jpg",
             "description": "Monumental spider sculpture exploring themes of motherhood and protection.",
             "provenance": [
                 {"year": "1999", "event": "First cast created"},
@@ -4736,8 +4758,8 @@ async def seed_data():
             "medium": "Stainless steel",
             "dimensions": "10 m × 20 m × 13 m",
             "location": "Millennium Park, Chicago",
-            "image_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/c/c1/Cloud_Gate_%28The_Bean%29_from_east%27.jpg/800px-Cloud_Gate_%28The_Bean%29_from_east%27.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/c/c1/Cloud_Gate_%28The_Bean%29_from_east%27.jpg/800px-Cloud_Gate_%28The_Bean%29_from_east%27.jpg",
             "description": "Iconic 'Bean' sculpture reflecting Chicago skyline, one of the most visited artworks in America.",
             "provenance": [
                 {"year": "2004", "event": "Construction begins"},
@@ -4763,8 +4785,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "94.8 cm × 74.8 cm",
             "location": "Hamburger Kunsthalle, Hamburg",
-            "image_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Caspar_David_Friedrich_-_Wanderer_above_the_Sea_of_Fog.jpeg/800px-Caspar_David_Friedrich_-_Wanderer_above_the_Sea_of_Fog.jpeg.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Caspar_David_Friedrich_-_Wanderer_above_the_Sea_of_Fog.jpeg/800px-Caspar_David_Friedrich_-_Wanderer_above_the_Sea_of_Fog.jpeg.jpg",
             "description": "Quintessential Romantic painting symbolizing man's contemplation of nature and the sublime.",
             "provenance": [
                 {"year": "1818", "event": "Created in Dresden"},
@@ -4789,8 +4811,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "130.5 cm × 190 cm",
             "location": "Musée d'Orsay, Paris",
-            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Edouard_Manet_-_Olympia_-_Google_Art_ProjectFXD.jpg/800px-Edouard_Manet_-_Olympia_-_Google_Art_ProjectFXD.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Edouard_Manet_-_Olympia_-_Google_Art_ProjectFXD.jpg/800px-Edouard_Manet_-_Olympia_-_Google_Art_ProjectFXD.jpg",
             "description": "Controversial masterpiece that scandalized Paris and redefined modern art.",
             "provenance": [
                 {"year": "1863", "event": "Created, rejected by Salon"},
@@ -4816,8 +4838,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "260 cm × 325 cm",
             "location": "Louvre Museum, Paris",
-            "image_url": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/02/La_Libert%C3%A9_guidant_le_peuple_-_Eug%C3%A8ne_Delacroix_-_Mus%C3%A9e_du_Louvre_Peintures_RF_129_-_apr%C3%A8s_restauration_2024.jpg/800px-La_Libert%C3%A9_guidant_le_peuple_-_Eug%C3%A8ne_Delacroix_-_Mus%C3%A9e_du_Louvre_Peintures_RF_129_-_apr%C3%A8s_restauration_2024.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/02/La_Libert%C3%A9_guidant_le_peuple_-_Eug%C3%A8ne_Delacroix_-_Mus%C3%A9e_du_Louvre_Peintures_RF_129_-_apr%C3%A8s_restauration_2024.jpg/800px-La_Libert%C3%A9_guidant_le_peuple_-_Eug%C3%A8ne_Delacroix_-_Mus%C3%A9e_du_Louvre_Peintures_RF_129_-_apr%C3%A8s_restauration_2024.jpg",
             "description": "Iconic symbol of French Revolution and democracy, featuring Marianne.",
             "provenance": [
                 {"year": "1830", "event": "Created after July Revolution"},
@@ -4843,8 +4865,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "45.5 cm × 41 cm",
             "location": "Rijksmuseum, Amsterdam",
-            "image_url": "https://images.unsplash.com/photo-1577083552431-6e5fd01988ec?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1577083552431-6e5fd01988ec?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Johannes_Vermeer_-_Het_melkmeisje_-_Google_Art_Project.png/800px-Johannes_Vermeer_-_Het_melkmeisje_-_Google_Art_Project.png.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6e/Johannes_Vermeer_-_Het_melkmeisje_-_Google_Art_Project.png/800px-Johannes_Vermeer_-_Het_melkmeisje_-_Google_Art_Project.png.jpg",
             "description": "Masterpiece of light and domestic tranquility, showcasing Vermeer's technique.",
             "provenance": [
                 {"year": "1658", "event": "Created in Delft"},
@@ -4869,8 +4891,8 @@ async def seed_data():
             "medium": "Fresco",
             "dimensions": "500 cm × 770 cm",
             "location": "Apostolic Palace, Vatican City",
-            "image_url": "https://images.unsplash.com/photo-1533154683836-84ea7a0bc310?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1533154683836-84ea7a0bc310?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/%22The_School_of_Athens%22_by_Raffaello_Sanzio_da_Urbino.jpg/800px-%22The_School_of_Athens%22_by_Raffaello_Sanzio_da_Urbino.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/%22The_School_of_Athens%22_by_Raffaello_Sanzio_da_Urbino.jpg/800px-%22The_School_of_Athens%22_by_Raffaello_Sanzio_da_Urbino.jpg",
             "description": "Monumental fresco depicting ancient philosophers, centerpiece of Vatican's Stanza della Segnatura.",
             "provenance": [
                 {"year": "1509-1511", "event": "Commissioned by Pope Julius II"},
@@ -4895,8 +4917,8 @@ async def seed_data():
             "medium": "Oil on oak panels",
             "dimensions": "220 cm × 389 cm (triptych open)",
             "location": "Museo del Prado, Madrid",
-            "image_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/The_Garden_of_earthly_delights.jpg/800px-The_Garden_of_earthly_delights.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/The_Garden_of_earthly_delights.jpg/800px-The_Garden_of_earthly_delights.jpg",
             "description": "Enigmatic triptych depicting paradise, earthly pleasures, and hell with surreal imagery.",
             "provenance": [
                 {"year": "1490-1510", "event": "Created, possibly for Nassau family"},
@@ -4922,8 +4944,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "144.3 cm × 162.4 cm",
             "location": "Musée d'Orsay, Paris",
-            "image_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Whistlers_Mother_high_res.jpg/800px-Whistlers_Mother_high_res.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Whistlers_Mother_high_res.jpg/800px-Whistlers_Mother_high_res.jpg",
             "description": "Iconic portrait that became a symbol of American motherhood and artistic restraint.",
             "provenance": [
                 {"year": "1871", "event": "Created in London"},
@@ -4948,8 +4970,8 @@ async def seed_data():
             "medium": "Marble sculpture",
             "dimensions": "517 cm height",
             "location": "Galleria dell'Accademia, Florence",
-            "image_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bb/%27David%27_by_Michelangelo_Fir_JBU004.jpg/800px-%27David%27_by_Michelangelo_Fir_JBU004.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bb/%27David%27_by_Michelangelo_Fir_JBU004.jpg/800px-%27David%27_by_Michelangelo_Fir_JBU004.jpg",
             "description": "Masterpiece of Renaissance sculpture depicting the biblical hero before battle with Goliath.",
             "provenance": [
                 {"year": "1501", "event": "Commissioned by Florence Cathedral"},
@@ -4975,8 +4997,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "84.1 cm × 152.4 cm",
             "location": "Art Institute of Chicago",
-            "image_url": "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1514539079130-25950c84af65?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Nighthawks_by_Edward_Hopper_1942.jpg/800px-Nighthawks_by_Edward_Hopper_1942.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Nighthawks_by_Edward_Hopper_1942.jpg/800px-Nighthawks_by_Edward_Hopper_1942.jpg",
             "description": "Iconic image of urban isolation depicting late-night diners in New York City.",
             "provenance": [
                 {"year": "1942", "event": "Created, inspired by Greenwich Village"},
@@ -5001,8 +5023,8 @@ async def seed_data():
             "medium": "Bronze sculpture",
             "dimensions": "189 cm height",
             "location": "Musée Rodin, Paris",
-            "image_url": "https://images.unsplash.com/photo-1564399580075-5dfe19c205f3?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1564399580075-5dfe19c205f3?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Le_Penseur_by_Rodin_%28Kunsthalle_Bielefeld%29_2014-04-10.JPG/800px-Le_Penseur_by_Rodin_%28Kunsthalle_Bielefeld%29_2014-04-10.JPG",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Le_Penseur_by_Rodin_%28Kunsthalle_Bielefeld%29_2014-04-10.JPG/800px-Le_Penseur_by_Rodin_%28Kunsthalle_Bielefeld%29_2014-04-10.JPG",
             "description": "Iconic bronze sculpture representing philosophy and intellectual effort, originally part of The Gates of Hell.",
             "provenance": [
                 {"year": "1880", "event": "Original concept as part of The Gates of Hell"},
@@ -5028,8 +5050,8 @@ async def seed_data():
             "medium": "Oil on canvas",
             "dimensions": "116 cm × 89 cm",
             "location": "Private Collection (frequently exhibited)",
-            "image_url": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/Magritte_TheSonOfMan.jpg/800px-Magritte_TheSonOfMan.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/en/thumb/e/e5/Magritte_TheSonOfMan.jpg/800px-Magritte_TheSonOfMan.jpg",
             "description": "Iconic surrealist self-portrait with floating apple obscuring the face.",
             "provenance": [
                 {"year": "1964", "event": "Created as self-portrait"},
@@ -5054,8 +5076,8 @@ async def seed_data():
             "medium": "Parian marble sculpture",
             "dimensions": "204 cm height",
             "location": "Louvre Museum, Paris",
-            "image_url": "https://images.unsplash.com/photo-1564399580075-5dfe19c205f3?w=800",
-            "thumbnail_url": "https://images.unsplash.com/photo-1564399580075-5dfe19c205f3?w=400",
+            "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Front_views_of_the_Venus_de_Milo.jpg/800px-Front_views_of_the_Venus_de_Milo.jpg",
+            "thumbnail_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Front_views_of_the_Venus_de_Milo.jpg/800px-Front_views_of_the_Venus_de_Milo.jpg",
             "description": "Ancient Greek masterpiece representing ideal female beauty, famous for missing arms.",
             "provenance": [
                 {"year": "130-100 BC", "event": "Created on island of Milos"},

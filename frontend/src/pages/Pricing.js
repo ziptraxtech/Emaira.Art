@@ -30,6 +30,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import RestorationTeaser from "@/components/RestorationTeaser";
 
 const Pricing = () => {
   const { user, login, logout } = useAuth();
@@ -306,6 +307,9 @@ const Pricing = () => {
               })}
             </div>
           )}
+
+          {/* AI Restoration Teaser */}
+          <RestorationTeaser />
 
           {/* Features Comparison */}
           <div className="mt-20">
