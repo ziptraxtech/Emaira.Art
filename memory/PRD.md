@@ -191,6 +191,14 @@ Build "Emaira.Art: The VR Storyteller plus AI Art Forensics" - a high-end VR Sto
 
 ## CHANGELOG
 
+### Apr 21, 2026 — Pricing Restoration Teaser + Authentic Artwork Images ✅
+- Added **RestorationTeaser** component on /pricing: draggable Before/After slider using Starry Night, with simulated aged-varnish CSS filter on the "Before" layer and CTA to upgrade to Pro Collector / Collector's Advisory
+- **Fixed all 50 seeded artwork images**: previously showing random Unsplash stock photos. Downloaded authentic Wikimedia Commons masterpiece JPEGs into `/app/backend/cache/artworks/` (7.5 MB, 50 files) and added `GET /api/artworks/cache/{artwork_id}` FileResponse endpoint with 1-year immutable cache headers
+- Replaced art_kaws_companion (KAWS Companion — no free image) with **The Fighting Temeraire** by J.M.W. Turner
+- Updated Gallery card styling: `aspect-[3/4] bg-[#1a1a18]` + `object-contain` so full artworks are visible without awkward cropping
+- Supporting scripts: `resolve_artwork_images.py` (queries Wikipedia REST API), `download_artwork_cache.py` (idempotent cacher with polite throttling), `fix_artwork_images.py` (migration helper)
+- Testing: iteration_8.json — 57/58 backend tests, 100% frontend
+
 ### Apr 21, 2026 — Art Restoration Studio Wired & Verified ✅
 - Registered `/restoration` protected route in `App.js`
 - Added Dashboard CTA card (`restoration-cta-card`) + nav link (`nav-restoration`)
