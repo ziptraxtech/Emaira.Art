@@ -180,11 +180,25 @@ Build "Emaira.Art: The VR Storyteller plus AI Art Forensics" - a high-end VR Sto
 ---
 
 ## FUTURE ENHANCEMENTS
+- [ ] Backend refactor: split `/app/backend/server.py` (5,270 lines) into per-feature routers (e.g., `routers/restoration.py`, `routers/auth.py`, etc.)
 - [ ] Native VR SDK (Apple Vision Pro, Meta Quest)
 - [ ] Offline VR mode
 - [ ] User artwork comparison tool
 - [ ] Advanced analytics dashboard
 - [ ] Push notifications (mobile)
+
+---
+
+## CHANGELOG
+
+### Apr 21, 2026 — Art Restoration Studio Wired & Verified ✅
+- Registered `/restoration` protected route in `App.js`
+- Added Dashboard CTA card (`restoration-cta-card`) + nav link (`nav-restoration`)
+- Verified backend endpoints at `/api/restoration/upload-scan`, `/condition-report`, `/simulate-restoration`, `/scans`, `/condition-reports`, `/simulations` (Gemini-backed)
+- Confirmed mobile camera capture input (`accept='image/*' capture='environment'`)
+- Confirmed subscription pricing increased: Pro Collector $1499, Collector's Advisory $4999
+- Added `/app/backend/seed_test_session.py` and documented test bearer token in `/app/memory/test_credentials.md`
+- Testing: iteration_7.json — 19/19 backend + all frontend checks passed
 
 ---
 
