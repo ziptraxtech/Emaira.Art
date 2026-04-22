@@ -96,6 +96,12 @@ const LandingPage = () => {
               <Link to="/technology" className="nav-link text-sm font-medium" data-testid="nav-technology">{t('nav.technology')}</Link>
               <Link to="/events" className="nav-link text-sm font-medium" data-testid="nav-events">{t('nav.events')}</Link>
               <Link to="/pricing" className="nav-link text-sm font-medium" data-testid="nav-pricing">{t('nav.pricing')}</Link>
+              <Link to="/architects" className="nav-link text-sm font-medium" data-testid="nav-architects">
+                <span className="relative">
+                  Architects
+                  <span className="absolute -top-1.5 -right-6 text-[8px] font-mono bg-[#B8962F] text-white px-1 rounded">NEW</span>
+                </span>
+              </Link>
               {user && (
                 <Link to="/dashboard" className="nav-link text-sm font-medium" data-testid="nav-dashboard">{t('nav.dashboard')}</Link>
               )}

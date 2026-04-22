@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 9 — validated Emaira Architects backend + frontend end-to-end. Backend: 20/20 pytest tests passed including tiers, project CRUD, upload (OpenCV keyframe extraction), video streaming, keyframe JPEGs, full Gemini 3.1-pro-preview analyze (~45s), delete+cleanup, and regression (/api/auth/me, /api/restoration/scans, /api/artworks/cache/art_mona_lisa). Frontend: /architects landing, /architects/pricing (3 tier cards with visible prices $499, $1999, Custom), dashboard (unauth redirects to /, authenticated renders title + New Project dialog opens), main-site nav-architects link all functional.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ArchitectsDashboard (New Project dialog)", "issues": ["Radix DialogContent missing aria-describedby / Description — a11y warning only, not blocking. Fix by adding a <DialogDescription> inside the dialog or passing aria-describedby explicitly."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_architects.py",
+    "/app/test_reports/pytest/pytest_architects.xml"
+  ],
+  "action_items": [
+    "(Optional / low priority) Add <DialogDescription> to the New Project dialog on ArchitectsDashboard to silence the React/Radix a11y console warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~5863 lines (up from 5292) — exceeds the 700-line guideline by a very large margin. Strongly recommend splitting into per-domain routers (auth, artworks, restoration, architects, payments) in a future refactor. architects_router alone is ~400 lines and is a natural extraction candidate into /app/backend/routers/architects.py.",
+    "Architects analyze endpoint is synchronous and can take 15–60s+ for short clips; acceptable for MVP but will cause HTTP-level timeouts on longer videos. Consider backgrounding with a task queue + polling endpoint before launching Pro tier publicly.",
+    "Video/keyframe endpoints correctly enforce user_id scoping via require_auth(). File paths use inspection_id (not raw user input) so path-traversal is protected.",
+    "OpenCV keyframe extraction uses a synchronous loop inside an async handler — for a 6-frame small clip this is fine, but for 500MB videos it will block the event loop. Consider running in a threadpool (asyncio.to_thread) for production.",
+    "ARCHITECTS_TIERS inspections_limit=None is used as the unlimited marker for pro — logic in _arch_enforce_quota should be explicitly tested for the 'unlimited when None' edge, which the test-user free-trial path currently masks."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_architects.py (new)"
+  ],
+  "success_rate": {
+    "backend": "100% (20/20 pytest tests passing, including Gemini 3.1-pro-preview real analyze call)",
+    "frontend": "100% (landing, pricing with 3 tiers, main-site nav, dashboard auth redirect + authenticated render + New Project dialog all verified)"
+  },
+  "test_credentials": "Bearer TEST_SESSION_TOKEN_RESTORATION_2026 (session_token cookie in browser tests) per /app/memory/test_credentials.md — user test-restoration@emaira.art, tier=collectors_advisory (falls under free-trial path for architects as expected).",
+  "seed_data_creation": "Tests created 'TEST_Architects_Proj' + 'TEST_InspProj' projects under the seeded test user, plus one inspection that was fully analyzed by Gemini and then cleanly deleted (video + keyframe files removed, /video returned 404 after delete confirming on-disk cleanup). The test-user dashboard currently shows 7 projects accumulated across test iterations plus 1 'Smoke test walkthrough' inspection from E1's pre-test — harmless, all TEST_ prefixed where created here.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All /api/architects/* routes verified with real data + real Gemini 3.1-pro-preview call. The upload endpoint uses multipart field name 'video' (not 'file'). GET /api/architects/projects/{id} returns a nested shape {project:{...}, inspections:[...]} rather than flattened — tests handle both but docs/frontend should be aware. Video/keyframe streaming endpoints DO require auth (bearer or cookie) — meaning the <video> tag on /architects/inspection/:id must be rendered with credentials-aware fetch or the session_token cookie must be set (which it is for browser users). For future cleanup, 7 stale TEST_ projects exist in architects_projects for user test-restoration; harmless but can be purged if desired.",
+  "rca of the issue": "N/A — no unresolved issues. Two transient failures during the first run were self-inflicted: (1) my test used wrong multipart field name 'file' instead of 'video' (fixed), (2) uvicorn --reload picked up my test-file edits mid-run which caused a 502 on a Gemini analyze call (resolved by stabilizing edits and re-running). The /api/architects/inspections/{id}/video endpoint requires auth, so test assertions against it also needed the Authorization header (fixed). All 20 tests then passed clean on re-run in 47s."
+}

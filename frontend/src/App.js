@@ -19,6 +19,10 @@ import OurTechnology from "@/pages/OurTechnology";
 import Events from "@/pages/Events";
 import CRMDashboard from "@/pages/CRMDashboard";
 import ArtRestoration from "@/pages/ArtRestoration";
+import ArchitectsLanding from "@/pages/ArchitectsLanding";
+import ArchitectsPricing from "@/pages/ArchitectsPricing";
+import ArchitectsDashboard from "@/pages/ArchitectsDashboard";
+import ArchitectsInspection from "@/pages/ArchitectsInspection";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -149,6 +153,24 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <ArtRestoration />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/architects" element={<ArchitectsLanding />} />
+      <Route path="/architects/pricing" element={<ArchitectsPricing />} />
+      <Route
+        path="/architects/dashboard"
+        element={
+          <ProtectedRoute>
+            <ArchitectsDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/architects/inspection/:inspectionId"
+        element={
+          <ProtectedRoute>
+            <ArchitectsInspection />
           </ProtectedRoute>
         }
       />

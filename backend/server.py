@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -300,6 +300,115 @@ class Organization(BaseModel):
     admin_users: List[str] = []  # List of user_ids with org admin access
     is_active: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# ===================== EMAIRA ARCHITECTS (QC/QA) MODELS =====================
+
+class ArchitectsProject(BaseModel):
+    project_id: str = Field(default_factory=lambda: f"proj_{uuid.uuid4().hex[:10]}")
+    user_id: str
+    name: str
+    location: Optional[str] = None
+    project_type: Optional[str] = None  # commercial, residential, infra, industrial
+    description: Optional[str] = None
+    status: str = "active"  # active, archived
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ArchitectsInspection(BaseModel):
+    inspection_id: str = Field(default_factory=lambda: f"insp_{uuid.uuid4().hex[:10]}")
+    user_id: str
+    project_id: str
+    title: str
+    inspection_type: str  # defect_detection, safety_monitoring, design_validation
+    video_filename: Optional[str] = None
+    video_size_bytes: int = 0
+    video_duration_sec: Optional[float] = None
+    frame_width: Optional[int] = None
+    frame_height: Optional[int] = None
+    keyframe_count: int = 0
+    design_reference_image_id: Optional[str] = None
+    notes: Optional[str] = None
+    status: str = "uploaded"  # uploaded, analyzing, completed, failed
+    analysis_started_at: Optional[datetime] = None
+    analysis_completed_at: Optional[datetime] = None
+    overall_summary: Optional[str] = None
+    overall_risk_level: Optional[str] = None  # low, medium, high, critical
+    defects_count: int = 0
+    safety_violations_count: int = 0
+    design_deviations_count: int = 0
+    ai_model: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ArchitectsFinding(BaseModel):
+    finding_id: str = Field(default_factory=lambda: f"find_{uuid.uuid4().hex[:10]}")
+    inspection_id: str
+    user_id: str
+    category: str  # defect, safety_violation, design_deviation, material_note
+    type: str  # e.g. "crack", "spalling", "no_hardhat", "misalignment"
+    severity: str  # low, medium, high, critical
+    confidence: float = 0.0
+    timestamp_sec: Optional[float] = None
+    bbox_hint: Optional[str] = None  # "top-left", "center", etc.
+    description: str
+    recommendation: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ArchitectsTier(BaseModel):
+    tier_id: str
+    name: str
+    price: float
+    currency: str = "usd"
+    period: str
+    inspection_limit: int  # -1 = unlimited
+    features: List[str]
+    is_contact_only: bool = False
+
+
+ARCHITECTS_TIERS: Dict[str, ArchitectsTier] = {
+    "architects_starter": ArchitectsTier(
+        tier_id="architects_starter", name="Starter", price=499.0, period="month",
+        inspection_limit=10,
+        features=[
+            "10 video inspections / month",
+            "Defect detection (cracks, spalling, misalignment)",
+            "Safety monitoring (PPE checks)",
+            "PDF/JSON report export",
+            "Up to 500 MB per video",
+            "Email support",
+        ],
+    ),
+    "architects_pro": ArchitectsTier(
+        tier_id="architects_pro", name="Pro", price=1999.0, period="month",
+        inspection_limit=-1,
+        features=[
+            "Unlimited video inspections",
+            "All Starter features",
+            "Reality vs. Design validation",
+            "Custom safety rulesets",
+            "Team workspace (up to 10 users)",
+            "Priority Gemini 3 Pro analysis queue",
+            "Slack / Teams webhook alerts",
+            "Dedicated support",
+        ],
+    ),
+    "architects_enterprise": ArchitectsTier(
+        tier_id="architects_enterprise", name="Enterprise", price=0.0, period="year",
+        inspection_limit=-1, is_contact_only=True,
+        features=[
+            "Everything in Pro",
+            "Custom integrations (BIM, Procore, ACC)",
+            "On-premise / private cloud deployment",
+            "Custom CV model fine-tuning",
+            "24/7 SLA",
+            "Dedicated account manager",
+        ],
+    ),
+}
+
 
 class SubscriptionTier(BaseModel):
     tier_id: str
@@ -3313,6 +3422,467 @@ async def get_restoration_simulation(simulation_id: str, request: Request):
     
     return simulation
 
+
+# ===================== EMAIRA ARCHITECTS (QC/QA) ROUTES =====================
+
+architects_router = APIRouter(prefix="/architects", tags=["Emaira Architects"])
+
+# Persistent folders for video + keyframe storage
+ARCHITECTS_VIDEO_DIR = Path(__file__).parent / "cache" / "architects" / "videos"
+ARCHITECTS_KEYFRAME_DIR = Path(__file__).parent / "cache" / "architects" / "keyframes"
+ARCHITECTS_VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+ARCHITECTS_KEYFRAME_DIR.mkdir(parents=True, exist_ok=True)
+
+ARCHITECTS_MAX_VIDEO_MB = 500
+ARCHITECTS_VALID_INSPECTION_TYPES = {"defect_detection", "safety_monitoring", "design_validation"}
+
+
+def _arch_enforce_quota(user: User, inspections_this_month: int) -> None:
+    """Raise 403 if user has exceeded their Architects plan inspection quota."""
+    tier_id = user.subscription_tier or ""
+    tier = ARCHITECTS_TIERS.get(tier_id)
+    if not tier:
+        # Allow a generous free trial of 2 inspections for any logged-in user
+        if inspections_this_month >= 2:
+            raise HTTPException(
+                status_code=403,
+                detail="Free trial exhausted (2 inspections). Upgrade to Emaira Architects Starter or Pro.",
+            )
+        return
+    if tier.inspection_limit == -1:
+        return
+    if inspections_this_month >= tier.inspection_limit:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Monthly inspection limit ({tier.inspection_limit}) reached on the {tier.name} plan.",
+        )
+
+
+@architects_router.get("/tiers")
+async def list_architects_tiers():
+    """Public endpoint — lists Emaira Architects subscription tiers."""
+    return [t.model_dump() for t in ARCHITECTS_TIERS.values()]
+
+
+@architects_router.post("/projects")
+async def create_architects_project(request: Request):
+    user = await require_auth(request)
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Project name is required")
+    project = ArchitectsProject(
+        user_id=user.user_id,
+        name=name,
+        location=body.get("location"),
+        project_type=body.get("project_type"),
+        description=body.get("description"),
+    )
+    doc = project.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.architects_projects.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@architects_router.get("/projects")
+async def list_architects_projects(request: Request):
+    user = await require_auth(request)
+    projects = await db.architects_projects.find(
+        {"user_id": user.user_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    # Attach inspection counts
+    for p in projects:
+        p["inspection_count"] = await db.architects_inspections.count_documents(
+            {"project_id": p["project_id"], "user_id": user.user_id}
+        )
+    return {"projects": projects}
+
+
+@architects_router.get("/projects/{project_id}")
+async def get_architects_project(project_id: str, request: Request):
+    user = await require_auth(request)
+    project = await db.architects_projects.find_one(
+        {"project_id": project_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    inspections = await db.architects_inspections.find(
+        {"project_id": project_id, "user_id": user.user_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    return {"project": project, "inspections": inspections}
+
+
+def _extract_keyframes(video_path: Path, out_dir: Path, inspection_id: str, max_frames: int = 6) -> Dict[str, Any]:
+    """Use OpenCV to probe the video and save evenly-spaced keyframes.
+    Returns {duration_sec, width, height, keyframe_count}.
+    Keyframes saved as `{inspection_id}_f{index}.jpg`."""
+    import cv2  # local import to keep startup fast
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        return {"duration_sec": None, "width": None, "height": None, "keyframe_count": 0}
+    fps = cap.get(cv2.CAP_PROP_FPS) or 0
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    duration = total / fps if fps > 0 else None
+    saved = 0
+    if total > 0:
+        # evenly-spaced frame indices, skipping the very first and last
+        step = max(total // (max_frames + 1), 1)
+        for i in range(1, max_frames + 1):
+            idx = min(step * i, total - 1)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                continue
+            # Downscale if very large
+            if frame.shape[1] > 1280:
+                scale = 1280 / frame.shape[1]
+                frame = cv2.resize(frame, (1280, int(frame.shape[0] * scale)))
+            out = out_dir / f"{inspection_id}_f{saved}.jpg"
+            cv2.imwrite(str(out), frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
+            saved += 1
+    cap.release()
+    return {"duration_sec": duration, "width": width, "height": height, "keyframe_count": saved}
+
+
+@architects_router.post("/inspections/upload")
+async def upload_architects_inspection(
+    request: Request,
+    project_id: str = Form(...),
+    title: str = Form(...),
+    inspection_type: str = Form(...),
+    notes: Optional[str] = Form(None),
+    video: UploadFile = File(...),
+):
+    """Accept a multipart video upload and create an inspection in status=uploaded."""
+    user = await require_auth(request)
+    if inspection_type not in ARCHITECTS_VALID_INSPECTION_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid inspection_type")
+    project = await db.architects_projects.find_one(
+        {"project_id": project_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    # Quota check (monthly)
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    count = await db.architects_inspections.count_documents(
+        {"user_id": user.user_id, "created_at": {"$gte": month_start.isoformat()}}
+    )
+    _arch_enforce_quota(user, count)
+
+    # Persist video
+    inspection_id = f"insp_{uuid.uuid4().hex[:10]}"
+    suffix = Path(video.filename or "").suffix.lower() or ".mp4"
+    if suffix not in (".mp4", ".mov", ".m4v", ".webm"):
+        raise HTTPException(status_code=400, detail="Unsupported video format")
+    video_path = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{suffix}"
+    size = 0
+    with open(video_path, "wb") as f:
+        while True:
+            chunk = await video.read(1 << 20)  # 1 MB
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > ARCHITECTS_MAX_VIDEO_MB * 1024 * 1024:
+                f.close()
+                video_path.unlink(missing_ok=True)
+                raise HTTPException(status_code=413, detail=f"Video exceeds {ARCHITECTS_MAX_VIDEO_MB}MB limit")
+            f.write(chunk)
+
+    probe = _extract_keyframes(video_path, ARCHITECTS_KEYFRAME_DIR, inspection_id)
+
+    inspection = ArchitectsInspection(
+        inspection_id=inspection_id,
+        user_id=user.user_id,
+        project_id=project_id,
+        title=title,
+        inspection_type=inspection_type,
+        video_filename=video.filename,
+        video_size_bytes=size,
+        video_duration_sec=probe["duration_sec"],
+        frame_width=probe["width"],
+        frame_height=probe["height"],
+        keyframe_count=probe["keyframe_count"],
+        notes=notes,
+        status="uploaded",
+    )
+    doc = inspection.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.architects_inspections.insert_one(doc)
+    await log_activity(user.user_id, "architects_inspection_upload", {
+        "inspection_id": inspection_id, "size_mb": round(size / 1_048_576, 2)
+    })
+    doc.pop("_id", None)
+    return doc
+
+
+@architects_router.get("/inspections")
+async def list_architects_inspections(request: Request, limit: int = 50):
+    user = await require_auth(request)
+    items = await db.architects_inspections.find(
+        {"user_id": user.user_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(limit)
+    return {"inspections": items}
+
+
+@architects_router.get("/inspections/{inspection_id}")
+async def get_architects_inspection(inspection_id: str, request: Request):
+    user = await require_auth(request)
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": inspection_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not insp:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    findings = await db.architects_findings.find(
+        {"inspection_id": inspection_id}, {"_id": 0}
+    ).sort("timestamp_sec", 1).to_list(500)
+    insp["findings"] = findings
+    insp["video_url"] = f"/api/architects/inspections/{inspection_id}/video"
+    insp["keyframes"] = [
+        f"/api/architects/inspections/{inspection_id}/keyframe/{i}"
+        for i in range(insp.get("keyframe_count", 0))
+    ]
+    return insp
+
+
+@architects_router.get("/inspections/{inspection_id}/video")
+async def stream_architects_video(inspection_id: str, request: Request):
+    user = await require_auth(request)
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": inspection_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not insp:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    # Find the stored file (extension varies)
+    for ext in (".mp4", ".mov", ".m4v", ".webm"):
+        p = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
+        if p.exists():
+            mime = {
+                ".mp4": "video/mp4", ".mov": "video/quicktime",
+                ".m4v": "video/mp4", ".webm": "video/webm",
+            }[ext]
+            return FileResponse(p, media_type=mime)
+    raise HTTPException(status_code=404, detail="Video file missing on disk")
+
+
+@architects_router.get("/inspections/{inspection_id}/keyframe/{idx}")
+async def get_architects_keyframe(inspection_id: str, idx: int, request: Request):
+    user = await require_auth(request)
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": inspection_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not insp:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    if idx < 0 or idx >= int(insp.get("keyframe_count", 0)):
+        raise HTTPException(status_code=404, detail="Keyframe not found")
+    p = ARCHITECTS_KEYFRAME_DIR / f"{inspection_id}_f{idx}.jpg"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Keyframe not on disk")
+    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+
+def _architects_prompt(inspection_type: str, inspection_title: str) -> str:
+    base = (
+        "You are Emaira Architects AI — a senior construction Quality Control engineer. "
+        "Analyze the uploaded site video carefully. Reply with STRICT VALID JSON only, no prose, "
+        "no markdown fences. Schema:\n"
+        "{\n"
+        "  \"overall_summary\": string (2-3 sentences),\n"
+        "  \"overall_risk_level\": \"low\"|\"medium\"|\"high\"|\"critical\",\n"
+        "  \"findings\": [\n"
+        "     {\"category\": \"defect\"|\"safety_violation\"|\"design_deviation\"|\"material_note\",\n"
+        "      \"type\": string (slug, e.g. \"crack\", \"no_hardhat\"),\n"
+        "      \"severity\": \"low\"|\"medium\"|\"high\"|\"critical\",\n"
+        "      \"confidence\": number 0-1,\n"
+        "      \"timestamp_sec\": number (where in the video),\n"
+        "      \"bbox_hint\": string (e.g. \"top-left\", \"center\", \"bottom-right\"),\n"
+        "      \"description\": string (1-2 sentences of what you observe),\n"
+        "      \"recommendation\": string (concrete action)}\n"
+        "  ]\n"
+        "}\n"
+        f"Inspection title: {inspection_title}\n"
+    )
+    if inspection_type == "defect_detection":
+        base += (
+            "FOCUS: structural & finish defects — cracks, spalling, honeycombing, efflorescence, "
+            "rebar exposure, water damage, misalignment of walls/columns, uneven finishes, "
+            "incorrect material usage. Ignore safety gear. Category MUST be \"defect\"."
+        )
+    elif inspection_type == "safety_monitoring":
+        base += (
+            "FOCUS: worker safety — missing hardhat, missing high-vis vest, missing gloves, "
+            "unsafe scaffolding, unsafe edge (fall risk), unsafe manual handling, smoking on site, "
+            "unsafe crane operation. Category MUST be \"safety_violation\". Always call out individuals "
+            "if PPE is missing, and note their location in the frame."
+        )
+    elif inspection_type == "design_validation":
+        base += (
+            "FOCUS: reality vs. design — visible deviations from typical construction drawings: "
+            "incorrect column locations, missing structural members, wrong opening sizes, "
+            "incorrect finish materials, incorrect MEP routing. Category MUST be \"design_deviation\"."
+        )
+    base += "\nReturn at minimum 1 finding (or an empty array with risk=low if truly nothing observed)."
+    return base
+
+
+@architects_router.post("/inspections/{inspection_id}/analyze")
+async def analyze_architects_inspection(inspection_id: str, request: Request):
+    """Kick off Gemini 3 Pro video analysis. Synchronous for MVP — takes 15-60s for short clips."""
+    user = await require_auth(request)
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": inspection_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not insp:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    if insp["status"] == "analyzing":
+        raise HTTPException(status_code=409, detail="Analysis already in progress")
+
+    # Locate video file on disk
+    video_path = None
+    for ext in (".mp4", ".mov", ".m4v", ".webm"):
+        p = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
+        if p.exists():
+            video_path = p
+            break
+    if not video_path:
+        raise HTTPException(status_code=404, detail="Video file missing")
+
+    await db.architects_inspections.update_one(
+        {"inspection_id": inspection_id},
+        {"$set": {
+            "status": "analyzing",
+            "analysis_started_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    # Remove any previous findings
+    await db.architects_findings.delete_many({"inspection_id": inspection_id})
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
+        api_key = os.getenv("EMERGENT_LLM_KEY")
+        if not api_key:
+            raise RuntimeError("EMERGENT_LLM_KEY missing")
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"arch_{inspection_id}",
+            system_message="You are Emaira Architects AI, a construction QC expert. Always reply in strict JSON.",
+        ).with_model("gemini", "gemini-3.1-pro-preview")
+        mime = {
+            ".mp4": "video/mp4", ".mov": "video/quicktime",
+            ".m4v": "video/mp4", ".webm": "video/webm",
+        }[video_path.suffix.lower()]
+        vid_file = FileContentWithMimeType(file_path=str(video_path), mime_type=mime)
+        prompt = _architects_prompt(insp["inspection_type"], insp["title"])
+        response = await chat.send_message(UserMessage(text=prompt, file_contents=[vid_file]))
+        # Parse JSON strictly; strip code fences if the model added them
+        raw = response.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```", 2)[1]
+            if raw.lower().startswith("json"):
+                raw = raw[4:]
+            raw = raw.rsplit("```", 1)[0].strip()
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            # Fallback: wrap the raw string as a single low-confidence note
+            parsed = {
+                "overall_summary": "AI returned non-JSON output; stored as free-text note.",
+                "overall_risk_level": "low",
+                "findings": [{
+                    "category": "material_note", "type": "ai_parse_error",
+                    "severity": "low", "confidence": 0.2, "timestamp_sec": 0,
+                    "bbox_hint": "n/a",
+                    "description": raw[:400],
+                    "recommendation": "Re-run analysis.",
+                }],
+            }
+
+        findings_in = parsed.get("findings") or []
+        defect = safety = design = 0
+        stored_findings = []
+        for f in findings_in:
+            cat = f.get("category") or "material_note"
+            if cat == "defect":
+                defect += 1
+            elif cat == "safety_violation":
+                safety += 1
+            elif cat == "design_deviation":
+                design += 1
+            finding = ArchitectsFinding(
+                inspection_id=inspection_id,
+                user_id=user.user_id,
+                category=cat,
+                type=str(f.get("type") or "unknown")[:80],
+                severity=str(f.get("severity") or "medium"),
+                confidence=float(f.get("confidence") or 0.0),
+                timestamp_sec=float(f.get("timestamp_sec") or 0.0) or None,
+                bbox_hint=f.get("bbox_hint"),
+                description=str(f.get("description") or ""),
+                recommendation=f.get("recommendation"),
+            )
+            fdoc = finding.model_dump()
+            fdoc["created_at"] = fdoc["created_at"].isoformat()
+            await db.architects_findings.insert_one(fdoc)
+            fdoc.pop("_id", None)
+            stored_findings.append(fdoc)
+
+        await db.architects_inspections.update_one(
+            {"inspection_id": inspection_id},
+            {"$set": {
+                "status": "completed",
+                "analysis_completed_at": datetime.now(timezone.utc).isoformat(),
+                "overall_summary": parsed.get("overall_summary"),
+                "overall_risk_level": parsed.get("overall_risk_level") or "low",
+                "defects_count": defect,
+                "safety_violations_count": safety,
+                "design_deviations_count": design,
+                "ai_model": "gemini-3.1-pro-preview",
+                "error_message": None,
+            }},
+        )
+        await log_activity(user.user_id, "architects_inspection_analyzed", {
+            "inspection_id": inspection_id, "findings": len(stored_findings),
+        })
+        return {
+            "inspection_id": inspection_id,
+            "status": "completed",
+            "overall_summary": parsed.get("overall_summary"),
+            "overall_risk_level": parsed.get("overall_risk_level"),
+            "findings_count": len(stored_findings),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Architects analysis failed: %s", exc)
+        await db.architects_inspections.update_one(
+            {"inspection_id": inspection_id},
+            {"$set": {"status": "failed", "error_message": str(exc)[:500]}},
+        )
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {exc}")
+
+
+@architects_router.delete("/inspections/{inspection_id}")
+async def delete_architects_inspection(inspection_id: str, request: Request):
+    user = await require_auth(request)
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": inspection_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not insp:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    await db.architects_inspections.delete_one({"inspection_id": inspection_id})
+    await db.architects_findings.delete_many({"inspection_id": inspection_id})
+    # Clean up video + keyframes
+    for ext in (".mp4", ".mov", ".m4v", ".webm"):
+        (ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}").unlink(missing_ok=True)
+    for f in ARCHITECTS_KEYFRAME_DIR.glob(f"{inspection_id}_f*.jpg"):
+        f.unlink(missing_ok=True)
+    return {"deleted": True, "inspection_id": inspection_id}
+
+
+
+
 # ===================== REVIEWS & RATINGS ROUTES =====================
 
 reviews_router = APIRouter(prefix="/reviews", tags=["Reviews"])
@@ -5271,6 +5841,7 @@ api_router.include_router(reviews_router)
 api_router.include_router(notifications_router)
 api_router.include_router(sharing_router)
 api_router.include_router(restoration_router)
+api_router.include_router(architects_router)
 
 @api_router.get("/")
 async def root():
