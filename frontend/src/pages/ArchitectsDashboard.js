@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -300,6 +301,7 @@ const ArchitectsDashboard = () => {
         <DialogContent className="bg-[#0a0a0a] border-[#1a1a1a] text-[#F5F5F0]">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">New Project</DialogTitle>
+            <DialogDescription className="text-[#A8A8A0]">Group related inspections under a single site or build.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateProject} className="space-y-4">
             <div>
@@ -339,6 +341,7 @@ const ArchitectsDashboard = () => {
         <DialogContent className="bg-[#0a0a0a] border-[#1a1a1a] text-[#F5F5F0] max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl">Upload Inspection Video</DialogTitle>
+            <DialogDescription className="text-[#A8A8A0]">MP4, MOV or WebM up to 500 MB. Gemini 3 Pro will analyze immediately after upload.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleUpload} className="space-y-4">
             <div>

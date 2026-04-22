@@ -191,6 +191,22 @@ Build "Emaira.Art: The VR Storyteller plus AI Art Forensics" - a high-end VR Sto
 
 ## CHANGELOG
 
+### Apr 22, 2026 — Emaira Architects: New Business Line Launched ✅
+- **Brand new product line** at `/architects` — Video AI QC/QA for construction sites, shared auth with Emaira.Art
+- **Backend (~470 new lines)** added to `server.py`:
+  - Models: `ArchitectsProject`, `ArchitectsInspection`, `ArchitectsFinding`, `ArchitectsTier` + 3-tier pricing (Starter $499/mo, Pro $1999/mo, Enterprise custom)
+  - `architects_router` with endpoints: `GET /tiers`, CRUD `/projects`, multipart `/inspections/upload` (500 MB cap, MP4/MOV/WebM), streaming `/video` + `/keyframe/{idx}`, Gemini-powered `/analyze`, `DELETE /inspections/{id}` with on-disk cleanup
+  - Hybrid AI: **Gemini 3.1-pro-preview** for video understanding + structured JSON findings, **OpenCV** for 6 keyframe extraction
+  - Monthly quota enforcement with 2-inspection free trial for non-Architects-tier users
+- **Frontend (4 new pages)**:
+  - `ArchitectsLanding` — hero, 3 capabilities, workflow, stats, CTA
+  - `ArchitectsPricing` — 3-tier grid
+  - `ArchitectsDashboard` — projects + inspections list, New Project dialog, Upload Video dialog with progress bar, KPI tiles
+  - `ArchitectsInspection` — video player with findings side panel (severity badges, timestamp jump, keyframes grid, summary, JSON export, re-analyze, delete)
+- Main site `LandingPage.js` gains a new "Architects" nav link with NEW badge for discoverability
+- Accessibility: Added `DialogDescription` to both dialogs in ArchitectsDashboard
+- Testing: **iteration_9.json — backend 20/20 pytest passed** (includes real Gemini 3.1-pro-preview analyze call), **frontend 100%** (landing, pricing with $499/$1999/Custom tiers, dashboard auth redirect + authenticated render + dialog)
+
 ### Apr 21, 2026 — Pricing Restoration Teaser + Authentic Artwork Images ✅
 - Added **RestorationTeaser** component on /pricing: draggable Before/After slider using Starry Night, with simulated aged-varnish CSS filter on the "Before" layer and CTA to upgrade to Pro Collector / Collector's Advisory
 - **Fixed all 50 seeded artwork images**: previously showing random Unsplash stock photos. Downloaded authentic Wikimedia Commons masterpiece JPEGs into `/app/backend/cache/artworks/` (7.5 MB, 50 files) and added `GET /api/artworks/cache/{artwork_id}` FileResponse endpoint with 1-year immutable cache headers
