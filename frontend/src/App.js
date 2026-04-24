@@ -23,6 +23,7 @@ import ArchitectsLanding from "@/pages/ArchitectsLanding";
 import ArchitectsPricing from "@/pages/ArchitectsPricing";
 import ArchitectsDashboard from "@/pages/ArchitectsDashboard";
 import ArchitectsInspection from "@/pages/ArchitectsInspection";
+import ArchitectsSharedReport from "@/pages/ArchitectsSharedReport";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -116,7 +117,8 @@ function AppRouter() {
 
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={<ArchitectsLanding />} />
+      <Route path="/art" element={<LandingPage />} />
       <Route path="/gallery" element={<Gallery />} />
       <Route path="/story/:storyId" element={<StoryDetail />} />
       <Route path="/pricing" element={<Pricing />} />
@@ -174,6 +176,7 @@ function AppRouter() {
           </ProtectedRoute>
         }
       />
+      <Route path="/architects/share/:token" element={<ArchitectsSharedReport />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -13,6 +13,8 @@ import {
   Building2,
   Activity,
   Layers,
+  MapPin,
+  Globe,
 } from "lucide-react";
 
 const CAPABILITIES = [
@@ -63,9 +65,10 @@ const ArchitectsLanding = () => {
           </Link>
           <div className="hidden md:flex items-center gap-8 text-sm text-[#A8A8A0]">
             <a href="#capabilities" className="hover:text-[#F5F5F0] transition-colors">Capabilities</a>
+            <a href="#cities" className="hover:text-[#F5F5F0] transition-colors">Markets</a>
             <a href="#workflow" className="hover:text-[#F5F5F0] transition-colors">Workflow</a>
             <Link to="/architects/pricing" className="hover:text-[#F5F5F0] transition-colors">Pricing</Link>
-            <Link to="/" className="hover:text-[#F5F5F0] transition-colors">Emaira.Art</Link>
+            <Link to="/art" className="hover:text-[#F5F5F0] transition-colors">Emaira.Art</Link>
           </div>
           <Link to="/architects/dashboard">
             <Button className="btn-gold text-sm" data-testid="architects-nav-launch">
@@ -163,6 +166,47 @@ const ArchitectsLanding = () => {
         </div>
       </section>
 
+      {/* Global Cities */}
+      <section id="cities" className="py-20 border-t border-[#111] relative overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.04] pointer-events-none"
+             style={{ backgroundImage: "radial-gradient(circle at 20% 30%, #D4AF37 1px, transparent 1.5px), radial-gradient(circle at 70% 60%, #D4AF37 1px, transparent 1.5px)", backgroundSize: "120px 120px" }} />
+        <div className="max-w-7xl mx-auto px-6 relative">
+          <div className="mb-12 max-w-2xl">
+            <Badge className="bg-[#1a1a1a] text-[#D4AF37] border-[#333] mb-3">
+              <Globe className="w-3 h-3 mr-1" /> Global Footprint
+            </Badge>
+            <h2 className="font-display text-3xl lg:text-5xl mb-4">
+              Built for the world's <span className="text-[#D4AF37]">most ambitious</span> skylines.
+            </h2>
+            <p className="text-[#A8A8A0]">
+              Emaira Architects is the QC partner for marquee construction programs across four continents. From mile-high towers in the Gulf to data-center hyperscale builds in Silicon Valley.
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { city: "Dubai", country: "UAE", flag: "🇦🇪", focus: "Hospitality · Mixed-use · Mile-high towers", projects: "Marquee partner program" },
+              { city: "Mumbai", country: "India", flag: "🇮🇳", focus: "Residential high-rise · Metro infrastructure", projects: "Pilot expansion 2026" },
+              { city: "Singapore", country: "Singapore", flag: "🇸🇬", focus: "Smart city · Sustainable construction", projects: "Reg-tech compliant deployments" },
+              { city: "San Francisco", country: "USA", flag: "🇺🇸", focus: "Data centers · Tech HQ · Seismic retrofit", projects: "West coast launch hub" },
+            ].map((c) => (
+              <div key={c.city} data-testid={`city-card-${c.city.toLowerCase().replace(/\s/g, '-')}`} className="card-obsidian rounded-xl p-6 hover:border-[#D4AF37]/40 border border-[#1a1a1a] transition-colors group">
+                <div className="flex items-start justify-between mb-3">
+                  <span className="text-3xl">{c.flag}</span>
+                  <MapPin className="w-4 h-4 text-[#666] group-hover:text-[#D4AF37] transition-colors" />
+                </div>
+                <h3 className="font-display text-2xl">{c.city}</h3>
+                <p className="text-[10px] tracking-[0.2em] uppercase text-[#666660] mb-3">{c.country}</p>
+                <p className="text-xs text-[#A8A8A0] leading-relaxed mb-3">{c.focus}</p>
+                <p className="text-[10px] text-[#D4AF37] font-mono">→ {c.projects}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-xs text-[#666660] mt-10">
+            …and more cities coming online: <span className="text-[#A8A8A0]">London · Toronto · Riyadh · Hong Kong · Sydney · Tokyo · Berlin · São Paulo</span>
+          </p>
+        </div>
+      </section>
+
       {/* Workflow */}
       <section id="workflow" className="py-20 bg-[#080808] border-y border-[#111]">
         <div className="max-w-7xl mx-auto px-6">
@@ -226,7 +270,7 @@ const ArchitectsLanding = () => {
       </section>
 
       <footer className="py-10 border-t border-[#111] text-center text-xs text-[#555]">
-        © 2026 Emaira Labs · <Link to="/" className="hover:text-[#D4AF37]">Back to Emaira.Art</Link>
+        © 2026 Emaira Labs · <Link to="/art" className="hover:text-[#D4AF37]">Explore Emaira.Art</Link>
       </footer>
     </div>
   );

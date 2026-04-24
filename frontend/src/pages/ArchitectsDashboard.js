@@ -69,7 +69,7 @@ const ArchitectsDashboard = () => {
 
   // Upload dialog
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [uploadForm, setUploadForm] = useState({ project_id: "", title: "", inspection_type: "defect_detection", notes: "", file: null });
+  const [uploadForm, setUploadForm] = useState({ project_id: "", title: "", inspection_type: "defect_detection", notes: "", file: null, design_reference: null });
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -135,6 +135,9 @@ const ArchitectsDashboard = () => {
       fd.append("inspection_type", uploadForm.inspection_type);
       if (uploadForm.notes) fd.append("notes", uploadForm.notes);
       fd.append("video", uploadForm.file);
+      if (uploadForm.inspection_type === "design_validation" && uploadForm.design_reference) {
+        fd.append("design_reference", uploadForm.design_reference);
+      }
       const { data } = await axios.post(`${API}/architects/inspections/upload`, fd, {
         withCredentials: true,
         headers: { "Content-Type": "multipart/form-data" },
@@ -142,14 +145,13 @@ const ArchitectsDashboard = () => {
           if (evt.total) setUploadProgress(Math.round((evt.loaded / evt.total) * 100));
         },
       });
-      toast.success("Video uploaded — starting analysis");
+      toast.success("Video uploaded — analysis running in background");
       setUploadDialogOpen(false);
-      setUploadForm({ project_id: "", title: "", inspection_type: "defect_detection", notes: "", file: null });
-      // Kick off analysis and navigate
-      axios.post(`${API}/architects/inspections/${data.inspection_id}/analyze`, {}, { withCredentials: true })
-        .then(() => { toast.success("Analysis complete"); fetchAll(); })
-        .catch((e) => toast.error(e.response?.data?.detail || "Analysis failed"));
+      setUploadForm({ project_id: "", title: "", inspection_type: "defect_detection", notes: "", file: null, design_reference: null });
+      // Background analyze auto-starts on upload — just navigate to the detail page,
+      // which polls until status=completed.
       navigate(`/architects/inspection/${data.inspection_id}`);
+      fetchAll();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Upload failed");
     } finally {
@@ -385,6 +387,21 @@ const ArchitectsDashboard = () => {
                 {uploadForm.file ? <>📼 {uploadForm.file.name} ({(uploadForm.file.size / 1_048_576).toFixed(1)} MB)</> : "Click to choose a video"}
               </button>
             </div>
+            {uploadForm.inspection_type === "design_validation" && (
+              <div>
+                <label className="text-xs text-[#A8A8A0]">BIM / Design reference (JPG, PNG, WebP · ≤ 25 MB · optional)</label>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(e) => setUploadForm((s) => ({ ...s, design_reference: e.target.files?.[0] || null }))}
+                  className="mt-1 block w-full text-sm text-[#A8A8A0] file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:bg-[#1a1a1a] file:text-[#D4AF37] hover:file:bg-[#222]"
+                  data-testid="architects-design-ref-input"
+                />
+                {uploadForm.design_reference && (
+                  <p className="text-[10px] text-[#666] mt-1">📐 {uploadForm.design_reference.name} ({(uploadForm.design_reference.size / 1024).toFixed(0)} KB)</p>
+                )}
+              </div>
+            )}
             <div>
               <label className="text-xs text-[#A8A8A0]">Notes (optional)</label>
               <Textarea value={uploadForm.notes} onChange={(e) => setUploadForm({ ...uploadForm, notes: e.target.value })} className="mt-1 bg-[#111] border-[#1a1a1a] text-[#F5F5F0] min-h-[60px]" />

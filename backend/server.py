@@ -2411,11 +2411,18 @@ async def create_stripe_checkout(request: Request):
     user = await get_current_user(request)
     
     if tier_id:
-        if tier_id not in SUBSCRIPTION_TIERS:
+        if tier_id in SUBSCRIPTION_TIERS:
+            tier = SUBSCRIPTION_TIERS[tier_id]
+            amount = tier.price
+            metadata = {"tier_id": tier_id, "type": "subscription"}
+        elif tier_id in ARCHITECTS_TIERS:
+            tier = ARCHITECTS_TIERS[tier_id]
+            if tier.is_contact_only:
+                raise HTTPException(status_code=400, detail="Enterprise plan is contact-only")
+            amount = tier.price
+            metadata = {"tier_id": tier_id, "type": "architects_subscription", "product": "architects"}
+        else:
             raise HTTPException(status_code=400, detail="Invalid tier")
-        tier = SUBSCRIPTION_TIERS[tier_id]
-        amount = tier.price
-        metadata = {"tier_id": tier_id, "type": "subscription"}
     elif story_id:
         story = await db.stories.find_one({"story_id": story_id}, {"_id": 0})
         if not story:
@@ -2517,6 +2524,19 @@ async def get_stripe_payment_status(session_id: str, request: Request):
                         {"user_id": user_id},
                         {"$set": update_user, "$inc": {"total_spent": float(txn.get("amount", 0))}}
                     )
+                elif metadata.get("type") == "architects_subscription":
+                    tier_id = metadata.get("tier_id")
+                    arch_tier = ARCHITECTS_TIERS.get(tier_id)
+                    days = 365 if (arch_tier and arch_tier.period == "year") else 30
+                    expires = datetime.now(timezone.utc) + timedelta(days=days)
+                    await db.users.update_one(
+                        {"user_id": user_id},
+                        {"$set": {
+                            "subscription_tier": tier_id,
+                            "subscription_expires": expires.isoformat(),
+                        },
+                         "$inc": {"total_spent": float(txn.get("amount", 0))}}
+                    )
                 elif metadata.get("type") == "story_purchase":
                     story_id = metadata.get("story_id")
                     access_type = metadata.get("access_type")
@@ -2581,11 +2601,18 @@ async def create_razorpay_order(request: Request):
     usd_to_inr = 83
     
     if tier_id:
-        if tier_id not in SUBSCRIPTION_TIERS:
+        if tier_id in SUBSCRIPTION_TIERS:
+            tier = SUBSCRIPTION_TIERS[tier_id]
+            amount_usd = tier.price
+            metadata = {"tier_id": tier_id, "type": "subscription"}
+        elif tier_id in ARCHITECTS_TIERS:
+            tier = ARCHITECTS_TIERS[tier_id]
+            if tier.is_contact_only:
+                raise HTTPException(status_code=400, detail="Enterprise plan is contact-only")
+            amount_usd = tier.price
+            metadata = {"tier_id": tier_id, "type": "architects_subscription", "product": "architects"}
+        else:
             raise HTTPException(status_code=400, detail="Invalid tier")
-        tier = SUBSCRIPTION_TIERS[tier_id]
-        amount_usd = tier.price
-        metadata = {"tier_id": tier_id, "type": "subscription"}
     elif story_id:
         story = await db.stories.find_one({"story_id": story_id}, {"_id": 0})
         if not story:
@@ -3555,8 +3582,10 @@ async def upload_architects_inspection(
     inspection_type: str = Form(...),
     notes: Optional[str] = Form(None),
     video: UploadFile = File(...),
+    design_reference: Optional[UploadFile] = File(None),
 ):
-    """Accept a multipart video upload and create an inspection in status=uploaded."""
+    """Accept a multipart video upload and create an inspection in status=uploaded.
+    For inspection_type=design_validation, optionally also accept a BIM/drawing image."""
     user = await require_auth(request)
     if inspection_type not in ARCHITECTS_VALID_INSPECTION_TYPES:
         raise HTTPException(status_code=400, detail="Invalid inspection_type")
@@ -3593,6 +3622,22 @@ async def upload_architects_inspection(
 
     probe = _extract_keyframes(video_path, ARCHITECTS_KEYFRAME_DIR, inspection_id)
 
+    # Persist optional BIM/design reference image
+    design_ref_id = None
+    if design_reference is not None and inspection_type == "design_validation":
+        ref_suffix = Path(design_reference.filename or "").suffix.lower() or ".jpg"
+        if ref_suffix not in (".jpg", ".jpeg", ".png", ".webp"):
+            raise HTTPException(status_code=400, detail="Design reference must be JPG / PNG / WebP")
+        design_ref_id = f"{inspection_id}_design{ref_suffix}"
+        with open(ARCHITECTS_KEYFRAME_DIR / design_ref_id, "wb") as f:
+            while True:
+                chunk = await design_reference.read(1 << 20)
+                if not chunk:
+                    break
+                if f.tell() > 25 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="Design reference exceeds 25 MB")
+                f.write(chunk)
+
     inspection = ArchitectsInspection(
         inspection_id=inspection_id,
         user_id=user.user_id,
@@ -3605,6 +3650,7 @@ async def upload_architects_inspection(
         frame_width=probe["width"],
         frame_height=probe["height"],
         keyframe_count=probe["keyframe_count"],
+        design_reference_image_id=design_ref_id,
         notes=notes,
         status="uploaded",
     )
@@ -3614,7 +3660,17 @@ async def upload_architects_inspection(
     await log_activity(user.user_id, "architects_inspection_upload", {
         "inspection_id": inspection_id, "size_mb": round(size / 1_048_576, 2)
     })
+    # Auto-kick off Gemini analysis in the background
+    await db.architects_inspections.update_one(
+        {"inspection_id": inspection_id},
+        {"$set": {
+            "status": "analyzing",
+            "analysis_started_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    asyncio.create_task(_run_architects_analysis(inspection_id, user.user_id))
     doc.pop("_id", None)
+    doc["status"] = "analyzing"
     return doc
 
 
@@ -3727,19 +3783,13 @@ def _architects_prompt(inspection_type: str, inspection_title: str) -> str:
     return base
 
 
-@architects_router.post("/inspections/{inspection_id}/analyze")
-async def analyze_architects_inspection(inspection_id: str, request: Request):
-    """Kick off Gemini 3 Pro video analysis. Synchronous for MVP — takes 15-60s for short clips."""
-    user = await require_auth(request)
+async def _run_architects_analysis(inspection_id: str, user_id: str):
+    """Background analysis worker. Updates the inspection doc + findings collection."""
     insp = await db.architects_inspections.find_one(
-        {"inspection_id": inspection_id, "user_id": user.user_id}, {"_id": 0}
+        {"inspection_id": inspection_id, "user_id": user_id}, {"_id": 0}
     )
     if not insp:
-        raise HTTPException(status_code=404, detail="Inspection not found")
-    if insp["status"] == "analyzing":
-        raise HTTPException(status_code=409, detail="Analysis already in progress")
-
-    # Locate video file on disk
+        return
     video_path = None
     for ext in (".mp4", ".mov", ".m4v", ".webm"):
         p = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
@@ -3747,18 +3797,17 @@ async def analyze_architects_inspection(inspection_id: str, request: Request):
             video_path = p
             break
     if not video_path:
-        raise HTTPException(status_code=404, detail="Video file missing")
-
-    await db.architects_inspections.update_one(
-        {"inspection_id": inspection_id},
-        {"$set": {
-            "status": "analyzing",
-            "analysis_started_at": datetime.now(timezone.utc).isoformat(),
-        }},
-    )
-    # Remove any previous findings
-    await db.architects_findings.delete_many({"inspection_id": inspection_id})
-
+        await db.architects_inspections.update_one(
+            {"inspection_id": inspection_id},
+            {"$set": {"status": "failed", "error_message": "Video file missing"}},
+        )
+        return
+    # Optional design reference (BIM image) for design_validation
+    design_ref_path = None
+    if insp.get("inspection_type") == "design_validation" and insp.get("design_reference_image_id"):
+        ref_p = ARCHITECTS_KEYFRAME_DIR / insp["design_reference_image_id"]
+        if ref_p.exists():
+            design_ref_path = ref_p
     try:
         from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
         api_key = os.getenv("EMERGENT_LLM_KEY")
@@ -3773,11 +3822,21 @@ async def analyze_architects_inspection(inspection_id: str, request: Request):
             ".mp4": "video/mp4", ".mov": "video/quicktime",
             ".m4v": "video/mp4", ".webm": "video/webm",
         }[video_path.suffix.lower()]
-        vid_file = FileContentWithMimeType(file_path=str(video_path), mime_type=mime)
+        files = [FileContentWithMimeType(file_path=str(video_path), mime_type=mime)]
+        if design_ref_path is not None:
+            ref_mime = {
+                ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".png": "image/png", ".webp": "image/webp",
+            }.get(design_ref_path.suffix.lower(), "image/jpeg")
+            files.append(FileContentWithMimeType(file_path=str(design_ref_path), mime_type=ref_mime))
         prompt = _architects_prompt(insp["inspection_type"], insp["title"])
-        response = await chat.send_message(UserMessage(text=prompt, file_contents=[vid_file]))
-        # Parse JSON strictly; strip code fences if the model added them
-        raw = response.strip()
+        if design_ref_path is not None:
+            prompt += (
+                "\n\nThe SECOND attachment is the reference BIM/design drawing or render. "
+                "Compare each frame of the video to this reference and call out every visible deviation."
+            )
+        response = await chat.send_message(UserMessage(text=prompt, file_contents=files))
+        raw = (response or "").strip()
         if raw.startswith("```"):
             raw = raw.split("```", 2)[1]
             if raw.lower().startswith("json"):
@@ -3786,7 +3845,6 @@ async def analyze_architects_inspection(inspection_id: str, request: Request):
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError:
-            # Fallback: wrap the raw string as a single low-confidence note
             parsed = {
                 "overall_summary": "AI returned non-JSON output; stored as free-text note.",
                 "overall_risk_level": "low",
@@ -3801,7 +3859,7 @@ async def analyze_architects_inspection(inspection_id: str, request: Request):
 
         findings_in = parsed.get("findings") or []
         defect = safety = design = 0
-        stored_findings = []
+        stored = 0
         for f in findings_in:
             cat = f.get("category") or "material_note"
             if cat == "defect":
@@ -3812,7 +3870,7 @@ async def analyze_architects_inspection(inspection_id: str, request: Request):
                 design += 1
             finding = ArchitectsFinding(
                 inspection_id=inspection_id,
-                user_id=user.user_id,
+                user_id=user_id,
                 category=cat,
                 type=str(f.get("type") or "unknown")[:80],
                 severity=str(f.get("severity") or "medium"),
@@ -3825,8 +3883,7 @@ async def analyze_architects_inspection(inspection_id: str, request: Request):
             fdoc = finding.model_dump()
             fdoc["created_at"] = fdoc["created_at"].isoformat()
             await db.architects_findings.insert_one(fdoc)
-            fdoc.pop("_id", None)
-            stored_findings.append(fdoc)
+            stored += 1
 
         await db.architects_inspections.update_one(
             {"inspection_id": inspection_id},
@@ -3842,25 +3899,45 @@ async def analyze_architects_inspection(inspection_id: str, request: Request):
                 "error_message": None,
             }},
         )
-        await log_activity(user.user_id, "architects_inspection_analyzed", {
-            "inspection_id": inspection_id, "findings": len(stored_findings),
+        await log_activity(user_id, "architects_inspection_analyzed", {
+            "inspection_id": inspection_id, "findings": stored,
         })
-        return {
-            "inspection_id": inspection_id,
-            "status": "completed",
-            "overall_summary": parsed.get("overall_summary"),
-            "overall_risk_level": parsed.get("overall_risk_level"),
-            "findings_count": len(stored_findings),
-        }
-    except HTTPException:
-        raise
     except Exception as exc:
         logger.exception("Architects analysis failed: %s", exc)
         await db.architects_inspections.update_one(
             {"inspection_id": inspection_id},
             {"$set": {"status": "failed", "error_message": str(exc)[:500]}},
         )
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {exc}")
+
+
+@architects_router.post("/inspections/{inspection_id}/analyze")
+async def analyze_architects_inspection(inspection_id: str, request: Request):
+    """Kick off background Gemini 3 Pro video analysis. Returns immediately with status='analyzing'."""
+    user = await require_auth(request)
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": inspection_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not insp:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    if insp["status"] == "analyzing":
+        raise HTTPException(status_code=409, detail="Analysis already in progress")
+
+    video_exists = any((ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}").exists()
+                       for ext in (".mp4", ".mov", ".m4v", ".webm"))
+    if not video_exists:
+        raise HTTPException(status_code=404, detail="Video file missing")
+
+    await db.architects_inspections.update_one(
+        {"inspection_id": inspection_id},
+        {"$set": {
+            "status": "analyzing",
+            "analysis_started_at": datetime.now(timezone.utc).isoformat(),
+            "error_message": None,
+        }},
+    )
+    await db.architects_findings.delete_many({"inspection_id": inspection_id})
+    asyncio.create_task(_run_architects_analysis(inspection_id, user.user_id))
+    return {"inspection_id": inspection_id, "status": "analyzing"}
 
 
 @architects_router.delete("/inspections/{inspection_id}")
@@ -3873,12 +3950,356 @@ async def delete_architects_inspection(inspection_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Inspection not found")
     await db.architects_inspections.delete_one({"inspection_id": inspection_id})
     await db.architects_findings.delete_many({"inspection_id": inspection_id})
-    # Clean up video + keyframes
+    await db.architects_share_links.delete_many({"inspection_id": inspection_id})
+    # Clean up video + keyframes + design reference
     for ext in (".mp4", ".mov", ".m4v", ".webm"):
         (ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}").unlink(missing_ok=True)
-    for f in ARCHITECTS_KEYFRAME_DIR.glob(f"{inspection_id}_f*.jpg"):
+    for f in ARCHITECTS_KEYFRAME_DIR.glob(f"{inspection_id}_*"):
         f.unlink(missing_ok=True)
     return {"deleted": True, "inspection_id": inspection_id}
+
+
+# ---------------- Design-reference image (BIM) ----------------
+@architects_router.get("/inspections/{inspection_id}/design-reference")
+async def get_architects_design_reference(inspection_id: str, request: Request):
+    user = await require_auth(request)
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": inspection_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not insp or not insp.get("design_reference_image_id"):
+        raise HTTPException(status_code=404, detail="No design reference")
+    p = ARCHITECTS_KEYFRAME_DIR / insp["design_reference_image_id"]
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Design reference missing on disk")
+    mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(
+        p.suffix.lstrip(".").lower(), "image/jpeg"
+    )
+    return FileResponse(p, media_type=mime, headers={"Cache-Control": "public, max-age=86400"})
+
+
+# ---------------- PDF export ----------------
+PAID_ARCHITECTS_TIERS = {"architects_starter", "architects_pro", "architects_enterprise"}
+
+
+def _build_inspection_pdf(insp: Dict[str, Any], findings: List[Dict[str, Any]]) -> bytes:
+    """Render a polished one-page-ish PDF of the inspection report. Returns bytes."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.colors import HexColor, black, white
+    from reportlab.lib.units import inch
+    from reportlab.lib.enums import TA_LEFT
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        PageBreak, Image as RLImage,
+    )
+    import io
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=letter,
+        leftMargin=0.6 * inch, rightMargin=0.6 * inch,
+        topMargin=0.6 * inch, bottomMargin=0.6 * inch,
+        title=f"Emaira Architects — {insp.get('title')}",
+    )
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle("h1", parent=styles["Heading1"], fontName="Helvetica-Bold",
+                        textColor=HexColor("#0a0a0a"), fontSize=22, spaceAfter=4)
+    sub = ParagraphStyle("sub", parent=styles["Normal"], fontName="Helvetica",
+                         textColor=HexColor("#888"), fontSize=10, spaceAfter=10)
+    body = ParagraphStyle("body", parent=styles["Normal"], fontSize=10, leading=14, alignment=TA_LEFT)
+    small = ParagraphStyle("small", parent=styles["Normal"], fontSize=8.5, textColor=HexColor("#555"))
+    sec = ParagraphStyle("sec", parent=styles["Heading3"], fontName="Helvetica-Bold",
+                         textColor=HexColor("#B8860B"), fontSize=13, spaceBefore=12, spaceAfter=6)
+
+    story = []
+    # Brand strip
+    brand_table = Table(
+        [[Paragraph("<b>EMAIRA</b><font color='#B8860B'>.</font>ARCHITECTS", h1),
+          Paragraph("Construction QC Inspection Report", sub)]],
+        colWidths=[4.5 * inch, 3.0 * inch],
+    )
+    brand_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LINEBELOW", (0, 0), (-1, -1), 1.5, HexColor("#B8860B")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(brand_table)
+    story.append(Spacer(1, 12))
+
+    # Title block
+    story.append(Paragraph(f"<b>{insp.get('title') or 'Untitled inspection'}</b>", h1))
+    meta = [
+        f"Inspection ID: {insp.get('inspection_id')}",
+        f"Type: {(insp.get('inspection_type') or '').replace('_',' ').title()}",
+        f"Risk: <b>{(insp.get('overall_risk_level') or 'n/a').upper()}</b>",
+        f"AI: {insp.get('ai_model') or '—'}",
+        f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+    ]
+    story.append(Paragraph(" &nbsp;·&nbsp; ".join(meta), small))
+    story.append(Spacer(1, 8))
+
+    # Summary
+    story.append(Paragraph("Executive Summary", sec))
+    story.append(Paragraph(insp.get("overall_summary") or "No summary recorded.", body))
+
+    # KPI strip
+    counts = [
+        ["Defects", str(insp.get("defects_count", 0))],
+        ["Safety Violations", str(insp.get("safety_violations_count", 0))],
+        ["Design Deviations", str(insp.get("design_deviations_count", 0))],
+        ["Total Findings", str(len(findings))],
+    ]
+    kpi = Table([list(zip(*counts))[0], list(zip(*counts))[1]], colWidths=[1.7 * inch] * 4)
+    kpi.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), HexColor("#0a0a0a")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("FONTSIZE", (0, 1), (-1, 1), 22),
+        ("FONTNAME", (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 12),
+        ("TOPPADDING", (0, 1), (-1, 1), 6),
+        ("BACKGROUND", (0, 1), (-1, 1), HexColor("#f8f5ee")),
+        ("TEXTCOLOR", (0, 1), (-1, 1), HexColor("#0a0a0a")),
+    ]))
+    story.append(Spacer(1, 8))
+    story.append(kpi)
+    story.append(Spacer(1, 8))
+
+    # Keyframes (up to 4 across)
+    kf_paths = sorted(ARCHITECTS_KEYFRAME_DIR.glob(f"{insp['inspection_id']}_f*.jpg"))[:4]
+    if kf_paths:
+        story.append(Paragraph("Keyframes", sec))
+        imgs = []
+        for kp in kf_paths:
+            try:
+                imgs.append(RLImage(str(kp), width=1.7 * inch, height=1.2 * inch))
+            except Exception:
+                pass
+        if imgs:
+            row = Table([imgs], colWidths=[1.8 * inch] * len(imgs))
+            row.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0, white)]))
+            story.append(row)
+
+    # Findings
+    severity_color = {
+        "low": HexColor("#1F8A4C"), "medium": HexColor("#C9A227"),
+        "high": HexColor("#D17B23"), "critical": HexColor("#B23A3A"),
+    }
+    cat_label = {
+        "defect": "DEFECT", "safety_violation": "SAFETY",
+        "design_deviation": "DESIGN", "material_note": "NOTE",
+    }
+    story.append(Paragraph(f"Findings ({len(findings)})", sec))
+    if not findings:
+        story.append(Paragraph("No issues detected.", body))
+    for f in findings:
+        sev = (f.get("severity") or "medium").lower()
+        cat = f.get("category") or "material_note"
+        ts = f.get("timestamp_sec")
+        ts_label = f"@ {ts:.1f}s" if isinstance(ts, (int, float)) else ""
+        conf = f.get("confidence")
+        conf_label = f"{round((conf or 0) * 100)}% conf" if conf is not None else ""
+        head = (
+            f'<font color="{severity_color.get(sev, black).hexval()}"><b>[{sev.upper()}]</b></font> '
+            f'<font color="#666"><b>{cat_label.get(cat, cat.upper())}</b> · {f.get("type")}</font> '
+            f'<font color="#999">{ts_label} {conf_label}</font>'
+        )
+        story.append(Paragraph(head, small))
+        story.append(Paragraph(f.get("description") or "—", body))
+        if f.get("recommendation"):
+            story.append(Paragraph(
+                f'<font color="#B8860B"><i>→ {f["recommendation"]}</i></font>', body
+            ))
+        if f.get("bbox_hint"):
+            story.append(Paragraph(f'<font color="#888">Location: {f["bbox_hint"]}</font>', small))
+        story.append(Spacer(1, 4))
+
+    story.append(Spacer(1, 16))
+    story.append(Paragraph(
+        "Generated by Emaira Architects · Video AI QC/QA · emaira.art/architects",
+        small,
+    ))
+    doc.build(story)
+    return buf.getvalue()
+
+
+@architects_router.get("/inspections/{inspection_id}/report.pdf")
+async def export_architects_inspection_pdf(inspection_id: str, request: Request):
+    user = await require_auth(request)
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": inspection_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not insp:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    findings = await db.architects_findings.find(
+        {"inspection_id": inspection_id}, {"_id": 0}
+    ).sort("timestamp_sec", 1).to_list(500)
+    pdf_bytes = _build_inspection_pdf(insp, findings)
+    safe_title = re.sub(r"[^a-zA-Z0-9_-]+", "_", (insp.get("title") or inspection_id))[:40]
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="emaira_{safe_title}.pdf"'},
+    )
+
+
+# ---------------- Public share links (paid users only) ----------------
+@architects_router.post("/inspections/{inspection_id}/share")
+async def create_architects_share_link(inspection_id: str, request: Request):
+    user = await require_auth(request)
+    if user.subscription_tier not in PAID_ARCHITECTS_TIERS:
+        raise HTTPException(
+            status_code=403,
+            detail="Public share links are available on Architects Starter, Pro and Enterprise plans.",
+        )
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": inspection_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not insp:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    if insp.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Only completed inspections can be shared")
+
+    # Reuse existing token for this inspection if present, else mint new one
+    existing = await db.architects_share_links.find_one(
+        {"inspection_id": inspection_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if existing:
+        return existing
+
+    token = uuid.uuid4().hex
+    record = {
+        "share_id": f"shr_{uuid.uuid4().hex[:10]}",
+        "token": token,
+        "inspection_id": inspection_id,
+        "user_id": user.user_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "view_count": 0,
+    }
+    await db.architects_share_links.insert_one(record)
+    return record
+
+
+@architects_router.delete("/inspections/{inspection_id}/share")
+async def revoke_architects_share_link(inspection_id: str, request: Request):
+    user = await require_auth(request)
+    res = await db.architects_share_links.delete_many(
+        {"inspection_id": inspection_id, "user_id": user.user_id}
+    )
+    return {"revoked": res.deleted_count}
+
+
+@architects_router.get("/share/{token}")
+async def get_architects_shared_inspection(token: str):
+    """PUBLIC endpoint — returns a redacted, read-only inspection report."""
+    if not re.match(r"^[a-f0-9]{32}$", token):
+        raise HTTPException(status_code=400, detail="Invalid token format")
+    link = await db.architects_share_links.find_one({"token": token}, {"_id": 0})
+    if not link:
+        raise HTTPException(status_code=404, detail="Share link not found or revoked")
+    await db.architects_share_links.update_one(
+        {"token": token}, {"$inc": {"view_count": 1}}
+    )
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": link["inspection_id"]}, {"_id": 0}
+    )
+    if not insp or insp.get("status") != "completed":
+        raise HTTPException(status_code=404, detail="Shared inspection not available")
+    findings = await db.architects_findings.find(
+        {"inspection_id": link["inspection_id"]}, {"_id": 0}
+    ).sort("timestamp_sec", 1).to_list(500)
+    project = await db.architects_projects.find_one(
+        {"project_id": insp["project_id"]},
+        {"_id": 0, "name": 1, "location": 1, "project_type": 1},
+    )
+    # Redact uploader's identity beyond their public org context
+    insp.pop("user_id", None)
+    insp["findings"] = findings
+    insp["project"] = project
+    insp["share_view_count"] = (link.get("view_count") or 0) + 1
+    insp["video_url"] = f"/api/architects/share/{token}/video"
+    insp["keyframes"] = [
+        f"/api/architects/share/{token}/keyframe/{i}"
+        for i in range(insp.get("keyframe_count", 0))
+    ]
+    if insp.get("design_reference_image_id"):
+        insp["design_reference_url"] = f"/api/architects/share/{token}/design"
+    return insp
+
+
+@architects_router.get("/share/{token}/video")
+async def stream_architects_shared_video(token: str):
+    link = await db.architects_share_links.find_one({"token": token}, {"_id": 0})
+    if not link:
+        raise HTTPException(status_code=404, detail="Share link not found")
+    inspection_id = link["inspection_id"]
+    for ext in (".mp4", ".mov", ".m4v", ".webm"):
+        p = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
+        if p.exists():
+            mime = {
+                ".mp4": "video/mp4", ".mov": "video/quicktime",
+                ".m4v": "video/mp4", ".webm": "video/webm",
+            }[ext]
+            return FileResponse(p, media_type=mime)
+    raise HTTPException(status_code=404, detail="Video missing")
+
+
+@architects_router.get("/share/{token}/keyframe/{idx}")
+async def get_architects_shared_keyframe(token: str, idx: int):
+    link = await db.architects_share_links.find_one({"token": token}, {"_id": 0})
+    if not link:
+        raise HTTPException(status_code=404, detail="Share link not found")
+    p = ARCHITECTS_KEYFRAME_DIR / f"{link['inspection_id']}_f{idx}.jpg"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Keyframe not found")
+    return FileResponse(p, media_type="image/jpeg",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
+@architects_router.get("/share/{token}/design")
+async def get_architects_shared_design(token: str):
+    link = await db.architects_share_links.find_one({"token": token}, {"_id": 0})
+    if not link:
+        raise HTTPException(status_code=404, detail="Share link not found")
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": link["inspection_id"]}, {"_id": 0, "design_reference_image_id": 1}
+    )
+    if not insp or not insp.get("design_reference_image_id"):
+        raise HTTPException(status_code=404, detail="No design reference")
+    p = ARCHITECTS_KEYFRAME_DIR / insp["design_reference_image_id"]
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Design reference missing")
+    mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(
+        p.suffix.lstrip(".").lower(), "image/jpeg"
+    )
+    return FileResponse(p, media_type=mime,
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
+@architects_router.get("/share/{token}/report.pdf")
+async def export_architects_shared_pdf(token: str):
+    link = await db.architects_share_links.find_one({"token": token}, {"_id": 0})
+    if not link:
+        raise HTTPException(status_code=404, detail="Share link not found")
+    insp = await db.architects_inspections.find_one(
+        {"inspection_id": link["inspection_id"]}, {"_id": 0}
+    )
+    if not insp:
+        raise HTTPException(status_code=404, detail="Inspection not found")
+    findings = await db.architects_findings.find(
+        {"inspection_id": link["inspection_id"]}, {"_id": 0}
+    ).sort("timestamp_sec", 1).to_list(500)
+    pdf_bytes = _build_inspection_pdf(insp, findings)
+    safe_title = re.sub(r"[^a-zA-Z0-9_-]+", "_", (insp.get("title") or "report"))[:40]
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="emaira_{safe_title}.pdf"'},
+    )
 
 
 

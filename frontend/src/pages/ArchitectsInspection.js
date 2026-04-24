@@ -18,6 +18,9 @@ import {
   RotateCw,
   Trash2,
   FileText,
+  Share2,
+  Copy,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -50,6 +53,9 @@ const ArchitectsInspection = () => {
   const [loading, setLoading] = useState(true);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [videoEl, setVideoEl] = useState(null);
+  const [shareLink, setShareLink] = useState(null);
+  const [creatingShare, setCreatingShare] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   const fetch = async () => {
     try {
@@ -111,6 +117,44 @@ const ArchitectsInspection = () => {
     a.download = `emaira_architects_${inspectionId}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportPDF = () => {
+    const url = `${process.env.REACT_APP_BACKEND_URL}/api/architects/inspections/${inspectionId}/report.pdf`;
+    window.open(url, "_blank");
+  };
+
+  const createShare = async () => {
+    setCreatingShare(true);
+    try {
+      const r = await axios.post(`${API}/architects/inspections/${inspectionId}/share`, {}, { withCredentials: true });
+      setShareLink(r.data);
+      toast.success("Public share link ready");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not create share link");
+    } finally {
+      setCreatingShare(false);
+    }
+  };
+
+  const revokeShare = async () => {
+    if (!window.confirm("Revoke the public share link? Anyone with the URL will lose access.")) return;
+    try {
+      await axios.delete(`${API}/architects/inspections/${inspectionId}/share`, { withCredentials: true });
+      setShareLink(null);
+      toast.success("Share link revoked");
+    } catch {
+      toast.error("Could not revoke");
+    }
+  };
+
+  const copyShareUrl = () => {
+    if (!shareLink) return;
+    const url = `${window.location.origin}/architects/share/${shareLink.token}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 1500);
+    });
   };
 
   const jumpTo = (sec) => {
@@ -180,9 +224,31 @@ const ArchitectsInspection = () => {
               </Button>
             )}
             {data.status === "completed" && (
+              <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111]" onClick={exportPDF} data-testid="architects-pdf-btn">
+                <FileText className="w-4 h-4 mr-2" /> Export PDF
+              </Button>
+            )}
+            {data.status === "completed" && (
               <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111]" onClick={exportJSON} data-testid="architects-export-btn">
                 <Download className="w-4 h-4 mr-2" /> Export JSON
               </Button>
+            )}
+            {data.status === "completed" && !shareLink && (
+              <Button className="btn-gold" onClick={createShare} disabled={creatingShare} data-testid="architects-share-btn">
+                {creatingShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
+                Share publicly
+              </Button>
+            )}
+            {data.status === "completed" && shareLink && (
+              <div className="flex items-center gap-1 bg-[#0a0a0a] border border-[#D4AF37]/40 rounded-md p-1 pr-2">
+                <span className="text-xs font-mono text-[#D4AF37] px-2 max-w-[120px] truncate">/share/{shareLink.token.slice(0, 8)}…</span>
+                <Button size="sm" variant="ghost" onClick={copyShareUrl} className="h-7 px-2 text-[#A8A8A0] hover:text-[#F5F5F0]">
+                  {shareCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={revokeShare} className="h-7 px-2 text-rose-400 hover:text-rose-300">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
             )}
             <Button variant="outline" className="border-rose-900/50 text-rose-300 hover:bg-rose-900/20" onClick={del}>
               <Trash2 className="w-4 h-4 mr-2" /> Delete
