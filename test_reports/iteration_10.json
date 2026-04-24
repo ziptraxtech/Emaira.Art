@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 10 — 5-part Architects upgrade fully validated. Backend pytest 17/17 in 24s (background analyze, BIM design-reference, PDF export, Stripe + Razorpay tier wiring, public share links with paid-tier gating + redacted user_id + view counter + revoke). Root frontend reoriented: / now renders ArchitectsLanding with 4 city cards (Dubai, Mumbai, Singapore, San Francisco); /art preserves the original Emaira.Art landing (verified). Public share fallback page renders correctly for invalid tokens. Fixed one ObjectId-leak bug during testing (insert_one mutates dict; popped _id before return).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": { "ui_bugs": [], "integration_issues": [], "design_issues": [] },
+  "test_report_links": [
+    "/app/backend/tests/test_architects_v10.py",
+    "/app/test_reports/iteration_10.json"
+  ],
+  "action_items": [
+    "(Optional) Move the architects router into /app/backend/routers/architects.py — server.py is now ~6,200 lines.",
+    "(Optional) Add Razorpay env keys (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET) to backend/.env to enable INR payments end-to-end. Currently the route returns 500 'Razorpay not configured', which is gracefully accepted by the test."
+  ],
+  "critical_code_review_comments": [
+    "Background analyze uses asyncio.create_task — fine for a single-pod deployment but won't survive pod restarts. For production scale, persist a 'pending_analysis' queue + add a worker process.",
+    "OpenCV keyframe extraction still synchronous inside async upload handler — on 500MB videos this blocks the event loop. Wrap _extract_keyframes call with await asyncio.to_thread() before launching publicly.",
+    "Architects share token uses uuid4().hex (128 bits, hex-encoded). Collision-resistant + URL-safe. Good.",
+    "Public share endpoints correctly redact user_id but inspection_id is exposed in the response body (safe — it's an opaque slug, not enumerable).",
+    "PDF generation is synchronous (reportlab) inside the request handler — on large reports this could spike latency. For >100 findings consider a background generator + caching."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (background analyze, BIM upload field, /share/* routes, /report.pdf, /design-reference; Stripe + Razorpay tier extension; ObjectId-leak fix)",
+    "/app/frontend/src/App.js (/, /art, /architects/share/:token routes)",
+    "/app/frontend/src/pages/ArchitectsLanding.js (Markets section with 4 global city cards + expansion line)",
+    "/app/frontend/src/pages/ArchitectsDashboard.js (design_reference upload field for design_validation)",
+    "/app/frontend/src/pages/ArchitectsInspection.js (PDF + Share + JSON export buttons, share-link badge with copy/revoke)",
+    "/app/frontend/src/pages/ArchitectsSharedReport.js (NEW — public read-only viewer)",
+    "/app/backend/tests/test_architects_v10.py (NEW — 17 tests with auto-cleanup)",
+    "/app/backend/requirements.txt (reportlab, opencv-python-headless)"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 pytest tests passing, including real Gemini 3.1-pro-preview analyze + Stripe checkout + 9 share-link assertions)",
+    "frontend": "100% (root → ArchitectsLanding with 4 city cards verified; /art → Emaira.Art preserved; /architects/share/:token public viewer with fallback verified)"
+  },
+  "test_credentials": "See /app/memory/test_credentials.md. Bearer: TEST_SESSION_TOKEN_RESTORATION_2026 (user test-restoration@emaira.art, default tier=collectors_advisory; tests promote to architects_pro mid-suite then revert).",
+  "seed_data_creation": "Test class auto-purges all architects_* docs for the test user before each full run via test_aaa_clean_state. Final test_zzz_revert_tier resets the tier back to collectors_advisory.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Architects router is now ~7 distinct feature areas (CRUD, upload, video/keyframe streaming, background analyze, BIM design-validation, PDF export, public share). All endpoints verified. The `/api/architects/share/{token}/*` family is the only public (no-auth) endpoint set; the rest require bearer or session_token cookie. Root landing was reoriented Apr 24 — / is Architects-led, /art is Emaira.Art."
+}

@@ -191,6 +191,16 @@ Build "Emaira.Art: The VR Storyteller plus AI Art Forensics" - a high-end VR Sto
 
 ## CHANGELOG
 
+### Apr 24, 2026 — Architects: Background Analyze, Razorpay+Stripe, BIM/PDF, Public Share, Cities Reorient ✅
+- **Background analyze**: upload immediately returns `status='analyzing'`; `_run_architects_analysis` runs as `asyncio.create_task`. Frontend already polls every 4s on the inspection page until `completed`.
+- **Stripe + Razorpay** checkout extended to accept Architects tier IDs (`architects_starter`, `architects_pro`); payment-success handler now grants the user the architects tier with proper expiry.
+- **BIM design-reference** upload: optional JPEG/PNG/WebP attached when `inspection_type='design_validation'`. Gemini receives both the video and the reference image and is prompted to call out deviations. Served via `/api/architects/inspections/{id}/design-reference`.
+- **PDF export**: `/api/architects/inspections/{id}/report.pdf` — branded reportlab PDF with KPI strip, keyframes, and severity-color-coded findings list.
+- **Public share links** (paid tiers only): `POST /share` returns a 32-char hex token; `GET /api/architects/share/{token}` is anonymous, redacts `user_id`, increments `view_count`, and serves `/video`, `/keyframe/{i}`, `/design`, and `/report.pdf`. Frontend `/architects/share/:token` page renders read-only report with a "Try Emaira Architects" upsell CTA.
+- **Root landing reorient**: `/` now renders **ArchitectsLanding** with a new "Markets" section featuring 4 city cards (Dubai/UAE, Mumbai/India, Singapore, San Francisco/USA) + a global expansion strip (London, Toronto, Riyadh, Hong Kong, Sydney, Tokyo, Berlin, São Paulo). Original Emaira.Art landing moved to `/art`, fully preserved.
+- Bug fix: ObjectId leak in share-create endpoint (insert_one mutated dict — now pops `_id`).
+- Testing: **iteration_10.json — 17/17 backend pytest passed + frontend smoke verified**.
+
 ### Apr 22, 2026 — Emaira Architects: New Business Line Launched ✅
 - **Brand new product line** at `/architects` — Video AI QC/QA for construction sites, shared auth with Emaira.Art
 - **Backend (~470 new lines)** added to `server.py`:

@@ -4181,6 +4181,7 @@ async def create_architects_share_link(inspection_id: str, request: Request):
         "view_count": 0,
     }
     await db.architects_share_links.insert_one(record)
+    record.pop("_id", None)
     return record
 
 

@@ -22,11 +22,19 @@ from pathlib import Path
 from pymongo import MongoClient
 
 # -------------------- config --------------------
-BASE_URL = None
+BASE_URL = "http://localhost:8001"
+# Override with REACT_APP_BACKEND_URL only if explicitly requested via env var
+import os as _os
+if _os.environ.get("USE_PREVIEW_URL") == "1":
+    with open("/app/frontend/.env") as f:
+        for line in f:
+            if line.startswith("REACT_APP_BACKEND_URL"):
+                BASE_URL = line.split("=", 1)[1].strip().strip('"').strip("'").rstrip("/")
+                break
 for line in Path("/app/frontend/.env").read_text().splitlines():
-    if line.startswith("REACT_APP_BACKEND_URL="):
+    if _os.environ.get("USE_PREVIEW_URL") == "1" and line.startswith("REACT_APP_BACKEND_URL="):
         BASE_URL = line.split("=", 1)[1].strip().strip('"').strip("'").rstrip("/")
-assert BASE_URL, "REACT_APP_BACKEND_URL missing"
+assert BASE_URL, "BASE_URL must be set"
 
 env = {}
 for line in Path("/app/backend/.env").read_text().splitlines():
@@ -85,6 +93,21 @@ def _poll_completed(insp_id, timeout=90):
 
 # -------------------- 0. setup: project + upload with design_reference --------------------
 class TestSetupUpload:
+    def test_aaa_clean_state(self):
+        """Purge any leftover architects state for the test user so quota is fresh."""
+        import pymongo
+        m = pymongo.MongoClient(MONGO_URL)
+        db = m[DB_NAME]
+        u = db.users.find_one({"email": "test-restoration@emaira.art"})
+        if u:
+            uid = u["user_id"]
+            db.architects_inspections.delete_many({"user_id": uid})
+            db.architects_findings.delete_many({"user_id": uid})
+            db.architects_share_links.delete_many({"user_id": uid})
+            db.architects_projects.delete_many({"user_id": uid})
+            db.users.update_one({"user_id": uid}, {"$set": {"subscription_tier": "collectors_advisory"}})
+        m.close()
+
     def test_create_project(self):
         r = requests.post(
             f"{BASE_URL}/api/architects/projects",
