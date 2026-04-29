@@ -189,11 +189,11 @@ const ArchitectsInspection = () => {
         </div>
       </nav>
 
-      <div className="pt-24 pb-16 max-w-7xl mx-auto px-6">
+      <div className="pt-24 pb-16 max-w-7xl mx-auto px-4 sm:px-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Badge className="bg-[#1a1a1a] text-[#D4AF37] border-[#333] capitalize">{data.inspection_type.replace(/_/g, " ")}</Badge>
               {data.status === "completed" && (
                 <Badge className="bg-emerald-900/30 text-emerald-400 border-emerald-900/50"><CheckCircle2 className="w-3 h-3 mr-1" />Completed</Badge>
@@ -213,35 +213,35 @@ const ArchitectsInspection = () => {
                 </Badge>
               )}
             </div>
-            <h1 className="font-display text-3xl lg:text-4xl" data-testid="architects-inspection-title">{data.title}</h1>
+            <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl break-words" data-testid="architects-inspection-title">{data.title}</h1>
             {data.ai_model && <p className="text-xs text-[#666660] mt-1">AI: {data.ai_model}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
             {data.status !== "analyzing" && (
-              <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111]" onClick={reanalyze} disabled={reanalyzing} data-testid="architects-reanalyze-btn">
+              <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111] flex-1 sm:flex-none" onClick={reanalyze} disabled={reanalyzing} data-testid="architects-reanalyze-btn">
                 {reanalyzing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RotateCw className="w-4 h-4 mr-2" />}
-                {data.status === "uploaded" ? "Run Analysis" : "Re-analyze"}
+                <span className="truncate">{data.status === "uploaded" ? "Run Analysis" : "Re-analyze"}</span>
               </Button>
             )}
             {data.status === "completed" && (
-              <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111]" onClick={exportPDF} data-testid="architects-pdf-btn">
-                <FileText className="w-4 h-4 mr-2" /> Export PDF
+              <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111] flex-1 sm:flex-none" onClick={exportPDF} data-testid="architects-pdf-btn">
+                <FileText className="w-4 h-4 mr-2" /> PDF
               </Button>
             )}
             {data.status === "completed" && (
-              <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111]" onClick={exportJSON} data-testid="architects-export-btn">
-                <Download className="w-4 h-4 mr-2" /> Export JSON
+              <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111] flex-1 sm:flex-none" onClick={exportJSON} data-testid="architects-export-btn">
+                <Download className="w-4 h-4 mr-2" /> JSON
               </Button>
             )}
             {data.status === "completed" && !shareLink && (
-              <Button className="btn-gold" onClick={createShare} disabled={creatingShare} data-testid="architects-share-btn">
+              <Button className="btn-gold flex-1 sm:flex-none" onClick={createShare} disabled={creatingShare} data-testid="architects-share-btn">
                 {creatingShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
-                Share publicly
+                <span className="truncate">Share</span>
               </Button>
             )}
             {data.status === "completed" && shareLink && (
-              <div className="flex items-center gap-1 bg-[#0a0a0a] border border-[#D4AF37]/40 rounded-md p-1 pr-2">
-                <span className="text-xs font-mono text-[#D4AF37] px-2 max-w-[120px] truncate">/share/{shareLink.token.slice(0, 8)}…</span>
+              <div className="flex items-center gap-1 bg-[#0a0a0a] border border-[#D4AF37]/40 rounded-md p-1 pr-2 max-w-full">
+                <span className="text-xs font-mono text-[#D4AF37] px-2 max-w-[100px] sm:max-w-[120px] truncate">/share/{shareLink.token.slice(0, 8)}…</span>
                 <Button size="sm" variant="ghost" onClick={copyShareUrl} className="h-7 px-2 text-[#A8A8A0] hover:text-[#F5F5F0]">
                   {shareCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                 </Button>
@@ -250,7 +250,7 @@ const ArchitectsInspection = () => {
                 </Button>
               </div>
             )}
-            <Button variant="outline" className="border-rose-900/50 text-rose-300 hover:bg-rose-900/20" onClick={del}>
+            <Button variant="outline" className="border-rose-900/50 text-rose-300 hover:bg-rose-900/20 flex-1 sm:flex-none" onClick={del}>
               <Trash2 className="w-4 h-4 mr-2" /> Delete
             </Button>
           </div>

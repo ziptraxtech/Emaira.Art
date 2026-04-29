@@ -37,6 +37,7 @@ import {
   UploadCloud,
   Sparkles,
   Building2,
+  Smartphone,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -57,6 +58,7 @@ const ArchitectsDashboard = () => {
   const { user, login, logout } = useAuth();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
 
   const [projects, setProjects] = useState([]);
   const [inspections, setInspections] = useState([]);
@@ -193,45 +195,45 @@ const ArchitectsDashboard = () => {
         </div>
       </nav>
 
-      <div className="pt-28 pb-16 max-w-7xl mx-auto px-6">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
-          <div>
-            <h1 className="font-display text-3xl lg:text-5xl mb-1" data-testid="architects-dashboard-title">
+      <div className="pt-24 sm:pt-28 pb-16 max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6 sm:mb-8">
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl sm:text-3xl lg:text-5xl mb-1 break-words" data-testid="architects-dashboard-title">
               Welcome, {user.name?.split(" ")[0]}
             </h1>
-            <p className="text-[#A8A8A0] text-sm">Your construction QC workspace.</p>
+            <p className="text-[#A8A8A0] text-xs sm:text-sm">Your construction QC workspace.</p>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111]" onClick={() => setProjectDialogOpen(true)} data-testid="architects-new-project">
-              <FolderPlus className="w-4 h-4 mr-2" /> New Project
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111] flex-1 sm:flex-none min-w-0" onClick={() => setProjectDialogOpen(true)} data-testid="architects-new-project">
+              <FolderPlus className="w-4 h-4 mr-1.5" /> <span className="truncate">New Project</span>
             </Button>
-            <Button className="btn-gold" onClick={() => setUploadDialogOpen(true)} disabled={projects.length === 0} data-testid="architects-new-inspection">
-              <UploadCloud className="w-4 h-4 mr-2" /> Upload Video
+            <Button className="btn-gold flex-1 sm:flex-none min-w-0" onClick={() => setUploadDialogOpen(true)} disabled={projects.length === 0} data-testid="architects-new-inspection">
+              <UploadCloud className="w-4 h-4 mr-1.5" /> <span className="truncate">Upload Video</span>
             </Button>
           </div>
         </div>
 
         {/* KPI */}
-        <div className="grid sm:grid-cols-4 gap-4 mb-10">
-          <div className="card-obsidian rounded-xl p-5">
-            <Building2 className="w-5 h-5 text-[#D4AF37] mb-3" />
-            <div className="font-display text-3xl">{projects.length}</div>
-            <div className="text-xs text-[#A8A8A0]">Projects</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-8 sm:mb-10">
+          <div className="card-obsidian rounded-xl p-4 sm:p-5">
+            <Building2 className="w-5 h-5 text-[#D4AF37] mb-2 sm:mb-3" />
+            <div className="font-display text-2xl sm:text-3xl">{projects.length}</div>
+            <div className="text-[10px] sm:text-xs text-[#A8A8A0]">Projects</div>
           </div>
-          <div className="card-obsidian rounded-xl p-5">
-            <Video className="w-5 h-5 text-[#D4AF37] mb-3" />
-            <div className="font-display text-3xl">{inspections.length}</div>
-            <div className="text-xs text-[#A8A8A0]">Inspections</div>
+          <div className="card-obsidian rounded-xl p-4 sm:p-5">
+            <Video className="w-5 h-5 text-[#D4AF37] mb-2 sm:mb-3" />
+            <div className="font-display text-2xl sm:text-3xl">{inspections.length}</div>
+            <div className="text-[10px] sm:text-xs text-[#A8A8A0]">Inspections</div>
           </div>
-          <div className="card-obsidian rounded-xl p-5">
-            <AlertTriangle className="w-5 h-5 text-rose-400 mb-3" />
-            <div className="font-display text-3xl">{inspections.reduce((s, i) => s + (i.defects_count || 0), 0)}</div>
-            <div className="text-xs text-[#A8A8A0]">Defects flagged</div>
+          <div className="card-obsidian rounded-xl p-4 sm:p-5">
+            <AlertTriangle className="w-5 h-5 text-rose-400 mb-2 sm:mb-3" />
+            <div className="font-display text-2xl sm:text-3xl">{inspections.reduce((s, i) => s + (i.defects_count || 0), 0)}</div>
+            <div className="text-[10px] sm:text-xs text-[#A8A8A0]">Defects flagged</div>
           </div>
-          <div className="card-obsidian rounded-xl p-5">
-            <HardHat className="w-5 h-5 text-amber-400 mb-3" />
-            <div className="font-display text-3xl">{inspections.reduce((s, i) => s + (i.safety_violations_count || 0), 0)}</div>
-            <div className="text-xs text-[#A8A8A0]">Safety violations</div>
+          <div className="card-obsidian rounded-xl p-4 sm:p-5">
+            <HardHat className="w-5 h-5 text-amber-400 mb-2 sm:mb-3" />
+            <div className="font-display text-2xl sm:text-3xl">{inspections.reduce((s, i) => s + (i.safety_violations_count || 0), 0)}</div>
+            <div className="text-[10px] sm:text-xs text-[#A8A8A0]">Safety violations</div>
           </div>
         </div>
 
@@ -258,14 +260,14 @@ const ArchitectsDashboard = () => {
                   key={i.inspection_id}
                   to={`/architects/inspection/${i.inspection_id}`}
                   data-testid={`architects-inspection-card-${i.inspection_id}`}
-                  className="card-obsidian rounded-xl p-5 flex items-center gap-4 hover:border-[#D4AF37]/50 border border-transparent transition-colors"
+                  className="card-obsidian rounded-xl p-4 sm:p-5 flex items-center gap-3 sm:gap-4 hover:border-[#D4AF37]/50 border border-transparent transition-colors"
                 >
-                  <div className="w-12 h-12 rounded-lg bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
-                    <TypeIcon className={`w-6 h-6 ${type.color}`} />
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
+                    <TypeIcon className={`w-5 h-5 sm:w-6 sm:h-6 ${type.color}`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-medium truncate">{i.title}</h3>
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                      <h3 className="font-medium truncate text-sm sm:text-base">{i.title}</h3>
                       {i.status === "completed" ? (
                         <Badge className="bg-emerald-900/30 text-emerald-400 border-emerald-900/50 text-[10px]"><CheckCircle2 className="w-3 h-3 mr-1" />Done</Badge>
                       ) : i.status === "analyzing" ? (
@@ -277,20 +279,26 @@ const ArchitectsDashboard = () => {
                       )}
                       {i.overall_risk_level && (
                         <Badge className={`text-[10px] ${RISK_BADGE[i.overall_risk_level] || RISK_BADGE.low}`}>
-                          {i.overall_risk_level} risk
+                          {i.overall_risk_level}
                         </Badge>
                       )}
                     </div>
-                    <p className="text-xs text-[#666660]">
-                      {project?.name || "—"} · {type.label} · {(i.video_size_bytes / 1_048_576).toFixed(1)} MB · {new Date(i.created_at).toLocaleDateString()}
+                    <p className="text-[10px] sm:text-xs text-[#666660] truncate">
+                      {project?.name || "—"} · {type.label} · {(i.video_size_bytes / 1_048_576).toFixed(1)} MB
                     </p>
+                    {/* Mobile-only finding counters (otherwise shown to the right) */}
+                    <div className="md:hidden flex items-center gap-3 mt-1.5 text-[10px] text-[#A8A8A0]">
+                      <span><span className="text-rose-400 font-mono">{i.defects_count || 0}</span> defect</span>
+                      <span><span className="text-amber-400 font-mono">{i.safety_violations_count || 0}</span> safety</span>
+                      <span><span className="text-sky-300 font-mono">{i.design_deviations_count || 0}</span> design</span>
+                    </div>
                   </div>
                   <div className="hidden md:flex items-center gap-4 text-xs text-[#A8A8A0]">
                     <span><span className="text-rose-400 font-mono">{i.defects_count || 0}</span> defect</span>
                     <span><span className="text-amber-400 font-mono">{i.safety_violations_count || 0}</span> safety</span>
                     <span><span className="text-sky-300 font-mono">{i.design_deviations_count || 0}</span> design</span>
                   </div>
-                  <Play className="w-4 h-4 text-[#666]" />
+                  <Play className="w-4 h-4 text-[#666] flex-shrink-0" />
                 </Link>
               );
             })}
@@ -300,10 +308,10 @@ const ArchitectsDashboard = () => {
 
       {/* Create project dialog */}
       <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}>
-        <DialogContent className="bg-[#0a0a0a] border-[#1a1a1a] text-[#F5F5F0]">
+        <DialogContent className="bg-[#0a0a0a] border-[#1a1a1a] text-[#F5F5F0] w-[95vw] max-w-md max-h-[92vh] overflow-y-auto p-4 sm:p-6 rounded-xl">
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl">New Project</DialogTitle>
-            <DialogDescription className="text-[#A8A8A0]">Group related inspections under a single site or build.</DialogDescription>
+            <DialogTitle className="font-display text-xl sm:text-2xl">New Project</DialogTitle>
+            <DialogDescription className="text-[#A8A8A0] text-xs sm:text-sm">Group related inspections under a single site or build.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateProject} className="space-y-4">
             <div>
@@ -340,10 +348,10 @@ const ArchitectsDashboard = () => {
 
       {/* Upload dialog */}
       <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-        <DialogContent className="bg-[#0a0a0a] border-[#1a1a1a] text-[#F5F5F0] max-w-lg">
+        <DialogContent className="bg-[#0a0a0a] border-[#1a1a1a] text-[#F5F5F0] w-[95vw] max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-6 rounded-xl">
           <DialogHeader>
-            <DialogTitle className="font-display text-2xl">Upload Inspection Video</DialogTitle>
-            <DialogDescription className="text-[#A8A8A0]">MP4, MOV or WebM up to 500 MB. Gemini 3 Pro will analyze immediately after upload.</DialogDescription>
+            <DialogTitle className="font-display text-xl sm:text-2xl">Upload Inspection Video</DialogTitle>
+            <DialogDescription className="text-[#A8A8A0] text-xs sm:text-sm">MP4, MOV or WebM up to 500 MB. Gemini 3 Pro will analyze immediately after upload.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleUpload} className="space-y-4">
             <div>
@@ -370,11 +378,11 @@ const ArchitectsDashboard = () => {
                       type="button"
                       key={t.value}
                       onClick={() => setUploadForm({ ...uploadForm, inspection_type: t.value })}
-                      className={`p-3 rounded-lg border text-center transition-colors ${active ? "border-[#D4AF37] bg-[#D4AF37]/10 text-[#D4AF37]" : "border-[#1a1a1a] text-[#A8A8A0] hover:border-[#333]"}`}
+                      className={`p-2 sm:p-3 rounded-lg border text-center transition-colors min-h-[64px] ${active ? "border-[#D4AF37] bg-[#D4AF37]/10 text-[#D4AF37]" : "border-[#1a1a1a] text-[#A8A8A0] hover:border-[#333]"}`}
                       data-testid={`architects-type-${t.value}`}
                     >
                       <Icon className={`w-5 h-5 mx-auto mb-1 ${active ? "text-[#D4AF37]" : t.color}`} />
-                      <span className="text-[10px] block leading-tight">{t.label.split(" (")[0]}</span>
+                      <span className="text-[10px] block leading-tight break-words">{t.label.split(" (")[0]}</span>
                     </button>
                   );
                 })}
@@ -382,10 +390,48 @@ const ArchitectsDashboard = () => {
             </div>
             <div>
               <label className="text-xs text-[#A8A8A0]">Video file (MP4, MOV, WebM · ≤ 500 MB)</label>
-              <input ref={fileInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v" onChange={handleFileSelect} className="hidden" />
-              <button type="button" onClick={() => fileInputRef.current?.click()} className="mt-1 w-full p-4 rounded-lg border-2 border-dashed border-[#333] hover:border-[#D4AF37] text-sm text-[#A8A8A0] transition-colors" data-testid="architects-upload-file-btn">
-                {uploadForm.file ? <>📼 {uploadForm.file.name} ({(uploadForm.file.size / 1_048_576).toFixed(1)} MB)</> : "Click to choose a video"}
-              </button>
+              {/* On phones, show two side-by-side options: Take video / Choose file */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="video/*"
+                capture="environment"
+                onChange={handleFileSelect}
+                className="hidden"
+                data-testid="architects-camera-capture-input"
+              />
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="p-3 sm:p-4 rounded-lg border-2 border-dashed border-[#333] hover:border-[#D4AF37] active:border-[#D4AF37] text-xs sm:text-sm text-[#A8A8A0] transition-colors flex flex-col items-center gap-1.5 min-h-[80px]"
+                  data-testid="architects-record-camera-btn"
+                >
+                  <Smartphone className="w-5 h-5" />
+                  <span>Record on phone</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-3 sm:p-4 rounded-lg border-2 border-dashed border-[#333] hover:border-[#D4AF37] active:border-[#D4AF37] text-xs sm:text-sm text-[#A8A8A0] transition-colors flex flex-col items-center gap-1.5 min-h-[80px]"
+                  data-testid="architects-upload-file-btn"
+                >
+                  <UploadCloud className="w-5 h-5" />
+                  <span>Choose file</span>
+                </button>
+              </div>
+              {uploadForm.file && (
+                <p className="mt-2 text-[11px] text-[#D4AF37] break-all px-1" data-testid="architects-selected-file">
+                  📼 {uploadForm.file.name} ({(uploadForm.file.size / 1_048_576).toFixed(1)} MB)
+                </p>
+              )}
             </div>
             {uploadForm.inspection_type === "design_validation" && (
               <div>
@@ -394,11 +440,11 @@ const ArchitectsDashboard = () => {
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   onChange={(e) => setUploadForm((s) => ({ ...s, design_reference: e.target.files?.[0] || null }))}
-                  className="mt-1 block w-full text-sm text-[#A8A8A0] file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:bg-[#1a1a1a] file:text-[#D4AF37] hover:file:bg-[#222]"
+                  className="mt-1 block w-full text-xs sm:text-sm text-[#A8A8A0] file:mr-2 sm:file:mr-3 file:py-2 file:px-3 sm:file:px-4 file:rounded file:border-0 file:bg-[#1a1a1a] file:text-[#D4AF37] hover:file:bg-[#222]"
                   data-testid="architects-design-ref-input"
                 />
                 {uploadForm.design_reference && (
-                  <p className="text-[10px] text-[#666] mt-1">📐 {uploadForm.design_reference.name} ({(uploadForm.design_reference.size / 1024).toFixed(0)} KB)</p>
+                  <p className="text-[10px] text-[#666] mt-1 break-all">📐 {uploadForm.design_reference.name} ({(uploadForm.design_reference.size / 1024).toFixed(0)} KB)</p>
                 )}
               </div>
             )}
@@ -412,7 +458,7 @@ const ArchitectsDashboard = () => {
                 <p className="text-[10px] text-[#666] mt-1 text-center">Uploading {uploadProgress}%</p>
               </div>
             )}
-            <Button type="submit" className="w-full btn-gold" disabled={uploading} data-testid="architects-upload-submit">
+            <Button type="submit" className="w-full btn-gold py-5 text-base" disabled={uploading} data-testid="architects-upload-submit">
               {uploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
               Upload & Analyze
             </Button>

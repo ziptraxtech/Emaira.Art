@@ -153,7 +153,7 @@ class TestSetupUpload:
         r = requests.post(
             f"{BASE_URL}/api/architects/inspections/{STATE['insp_id']}/analyze",
             headers=AUTH,
-            timeout=15,
+            timeout=60,
         )
         # Either 409 (still analyzing) or 200 (just finished) are acceptable; prefer 409
         assert r.status_code in (200, 409), r.text

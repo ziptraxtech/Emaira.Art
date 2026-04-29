@@ -191,6 +191,18 @@ Build "Emaira.Art: The VR Storyteller plus AI Art Forensics" - a high-end VR Sto
 
 ## CHANGELOG
 
+### Apr 29, 2026 — Backend Refactor + Mobile Upload + Wrapping ✅
+- **Backend refactor**: Extracted Architects models, helpers and routes into `/app/backend/routers/architects.py` (990 lines, self-contained). Created `_runtime.py` shared-namespace module so the new router can pull `db`, `User`, `require_auth`, `log_activity`, `logger` without circular imports. server.py reduced from **6,284 → 5,335 lines** (-15%).
+- **Event-loop relief**: Wrapped the synchronous `_extract_keyframes` (OpenCV) and `_build_inspection_pdf` (reportlab) calls in `await asyncio.to_thread()`. 500MB videos and 100-finding PDFs no longer block the FastAPI event loop.
+- **Mobile-friendly upload dialog**: Added a separate "Record on phone" button using `<input type="file" accept="video/*" capture="environment">` so smartphones open the rear camera directly. "Choose file" sits beside it on a 2-col grid. Dialog now uses `w-[95vw] max-h-[92vh] overflow-y-auto` for proper phone-screen fit.
+- **Responsive wrapping** across the Architects UI:
+  - Dashboard header buttons: `flex flex-wrap gap-2` + full-width on mobile
+  - KPI cards: 2-col grid on mobile, 4-col on desktop
+  - Inspection list: status/risk/title badges wrap; finding counters appear inline on mobile, off to the right on desktop
+  - Inspection detail action row: PDF / JSON / Share / Reanalyze / Delete all wrap with full-width on small screens
+  - Long file names use `break-all` so they don't overflow the dialog
+- Testing: **17/17 backend pytest passed** (including post-refactor smoke); mobile screenshots verified at 390×844 viewport.
+
 ### Apr 24, 2026 — Architects: Background Analyze, Razorpay+Stripe, BIM/PDF, Public Share, Cities Reorient ✅
 - **Background analyze**: upload immediately returns `status='analyzing'`; `_run_architects_analysis` runs as `asyncio.create_task`. Frontend already polls every 4s on the inspection page until `completed`.
 - **Stripe + Razorpay** checkout extended to accept Architects tier IDs (`architects_starter`, `architects_pro`); payment-success handler now grants the user the architects tier with proper expiry.
