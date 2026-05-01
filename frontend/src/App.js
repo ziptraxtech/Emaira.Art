@@ -1,4 +1,5 @@
-import { useState, useEffect, createContext, useContext, Component } from "react";
+import { createContext, useContext, Component } from "react";
+import { ClerkProvider, useUser, useClerk } from "@clerk/clerk-react";
 import "@/App.css";
 
 class ErrorBoundary extends Component {
@@ -18,8 +19,7 @@ class ErrorBoundary extends Component {
   }
 }
 import "@/i18n"; // Initialize i18n
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
-import axios from "axios";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 
 // Pages
@@ -57,40 +57,25 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { user: clerkUser, isLoaded } = useUser();
+  const clerk = useClerk();
 
-  const checkAuth = async () => {
-    try {
-      const response = await axios.get(`${API}/auth/me`, {
-        withCredentials: true,
-      });
-      setUser(response.data);
-    } catch (error) {
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const user = clerkUser
+    ? {
+        name: clerkUser.fullName || clerkUser.firstName || clerkUser.username || "User",
+        email: clerkUser.primaryEmailAddress?.emailAddress || "",
+        picture: clerkUser.imageUrl || "",
+        id: clerkUser.id,
+      }
+    : null;
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const login = () => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    const redirectUrl = window.location.origin + '/dashboard';
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-  };
-
+  const loading = !isLoaded;
+  const setUser = () => {};
+  const checkAuth = () => {};
+  const login = () => clerk.openSignIn();
   const logout = async () => {
-    try {
-      await axios.post(`${API}/auth/logout`, {}, { withCredentials: true });
-      setUser(null);
-      window.location.href = '/';
-    } catch (error) {
-      console.error("Logout error:", error);
-    }
+    await clerk.signOut();
+    window.location.href = "/";
   };
 
   return (
@@ -123,15 +108,7 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-// App Router with session_id detection
 function AppRouter() {
-  const location = useLocation();
-
-  // Check URL fragment for session_id synchronously during render
-  if (location.hash?.includes('session_id=')) {
-    return <AuthCallback />;
-  }
-
   return (
     <Routes>
       <Route path="/" element={<ArchitectsLanding />} />
@@ -195,14 +172,16 @@ function AppRouter() {
 function App() {
   return (
     <ErrorBoundary>
-      <BrowserRouter>
-        <AuthProvider>
-          <div className="App min-h-screen bg-[#FAFAF8]">
-            <AppRouter />
-            <Toaster position="bottom-right" theme="light" />
-          </div>
-        </AuthProvider>
-      </BrowserRouter>
+      <ClerkProvider publishableKey={process.env.REACT_APP_CLERK_PUBLISHABLE_KEY}>
+        <BrowserRouter>
+          <AuthProvider>
+            <div className="App min-h-screen bg-[#FAFAF8]">
+              <AppRouter />
+              <Toaster position="bottom-right" theme="light" />
+            </div>
+          </AuthProvider>
+        </BrowserRouter>
+      </ClerkProvider>
     </ErrorBoundary>
   );
 }
