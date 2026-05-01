@@ -79,59 +79,66 @@ const ArchitectsLanding = () => {
       </nav>
 
       {/* Hero */}
-      <section className="pt-32 lg:pt-40 pb-20 relative overflow-hidden">
+      <section className="pt-32 lg:pt-40 pb-0 relative overflow-hidden">
         <div className="absolute inset-0 opacity-[0.08] pointer-events-none"
              style={{ backgroundImage: "linear-gradient(rgba(212,175,55,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(212,175,55,0.5) 1px, transparent 1px)", backgroundSize: "56px 56px" }} />
         <div className="max-w-7xl mx-auto px-6 relative">
-          <div className="grid lg:grid-cols-12 gap-10 items-center">
-            <div className="lg:col-span-8">
-              <Badge className="bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30 mb-6">
-                <Sparkles className="w-3 h-3 mr-1" /> New Business Line · Powered by Gemini 3 Pro
-              </Badge>
-              <h1 className="font-display text-4xl sm:text-5xl lg:text-7xl leading-[1.05] mb-6">
-                Video AI<br />
-                <span className="text-[#D4AF37]">QC / QA</span> for<br />
-                every job site.
-              </h1>
-              <p className="text-lg text-[#A8A8A0] max-w-xl mb-8">
-                Emaira Architects ingests your site video and returns a structural defect log, a PPE safety sheet, and design-vs-reality deviations — in minutes, not weeks.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Link to="/architects/dashboard">
-                  <Button className="btn-gold text-base px-6 py-6" data-testid="architects-hero-cta">
-                    <Video className="w-4 h-4 mr-2" /> Start an Inspection
-                  </Button>
-                </Link>
-                <Link to="/architects/pricing">
-                  <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111] px-6 py-6">
-                    See Pricing
-                  </Button>
-                </Link>
-              </div>
+          {/* Text block — full width on mobile, half on desktop */}
+          <div className="max-w-2xl mb-10">
+            <Badge className="bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30 mb-6">
+              <Sparkles className="w-3 h-3 mr-1" /> New Business Line · Powered by Gemini 3 Pro
+            </Badge>
+            <h1 className="font-display text-4xl sm:text-5xl lg:text-7xl leading-[1.05] mb-6">
+              Video AI<br />
+              <span className="text-[#D4AF37]">QC / QA</span> for<br />
+              every job site.
+            </h1>
+            <p className="text-lg text-[#A8A8A0] max-w-xl mb-8">
+              Emaira Architects ingests your site video and returns a structural defect log, a PPE safety sheet, and design-vs-reality deviations — in minutes, not weeks.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Link to="/architects/dashboard">
+                <Button className="btn-gold text-base px-6 py-6 w-full sm:w-auto" data-testid="architects-hero-cta">
+                  <Video className="w-4 h-4 mr-2" /> Start an Inspection
+                </Button>
+              </Link>
+              <Link to="/architects/pricing">
+                <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111] px-6 py-6 w-full sm:w-auto">
+                  See Pricing
+                </Button>
+              </Link>
             </div>
-            <div className="lg:col-span-4">
-              <div className="relative w-[75%] ml-auto">
-                <div className="absolute -inset-6 rounded-2xl bg-gradient-to-br from-[#D4AF37]/20 via-transparent to-transparent blur-3xl" />
-                <div className="relative card-obsidian rounded-xl overflow-hidden border border-[#222]">
-                  <div className="aspect-[4/3] bg-[#0a0a0a] relative">
-                    <video
-                      src="/WhatsApp Video 2026-05-01 at 12.05.27.mp4"
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      className="w-full h-full object-cover"
-                    />
-                    {/* HUD overlays */}
-                    <div className="absolute top-4 left-4 bg-[#050505]/80 backdrop-blur-sm border border-[#D4AF37]/40 rounded px-2.5 py-1 text-[10px] font-mono text-[#D4AF37] uppercase tracking-wider">
-                      ● Emaira AI · Live Analysis
-                    </div>
-                    <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-[11px] font-mono text-[#A8A8A0]">
-                      <span>defects 3 · safety 2 · design 1</span>
-                    </div>
-                  </div>
+          </div>
+        </div>
+
+        {/* Full-width video panel */}
+        <div className="relative mt-4">
+          <div className="absolute -inset-1 bg-gradient-to-b from-[#D4AF37]/10 via-transparent to-transparent pointer-events-none" />
+          <div className="mx-auto max-w-7xl px-6">
+            <div className="relative rounded-t-2xl overflow-hidden border border-[#222] border-b-0 shadow-[0_-20px_80px_-20px_rgba(212,175,55,0.25)]">
+              {/* HUD bar */}
+              <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 py-3 bg-[#050505]/70 backdrop-blur-md border-b border-[#D4AF37]/20">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#D4AF37] animate-pulse" />
+                  <span className="text-[11px] font-mono text-[#D4AF37] uppercase tracking-widest">Emaira AI · Live Analysis</span>
+                </div>
+                <div className="hidden sm:flex items-center gap-6 text-[11px] font-mono text-[#A8A8A0]">
+                  <span className="text-rose-400">● Defects: 3</span>
+                  <span className="text-amber-400">● Safety: 2</span>
+                  <span className="text-blue-400">● Design: 1</span>
                 </div>
               </div>
+              <video
+                src="/WhatsApp Video 2026-05-01 at 12.05.27.mp4"
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full object-cover"
+                style={{ maxHeight: "520px" }}
+              />
+              {/* Bottom gradient fade */}
+              <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#050505] to-transparent pointer-events-none" />
             </div>
           </div>
         </div>
