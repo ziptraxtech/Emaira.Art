@@ -220,7 +220,7 @@ const StoryDetail = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="min-h-screen bg-[#080d1c] flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-[#A8A8A0]">Loading story...</p>
@@ -231,7 +231,7 @@ const StoryDetail = () => {
 
   if (!story || !artwork) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="min-h-screen bg-[#080d1c] flex items-center justify-center">
         <div className="text-center">
           <p className="text-[#A8A8A0] mb-4">Story not found</p>
           <Button onClick={() => navigate('/gallery')} className="btn-gold">
@@ -245,15 +245,13 @@ const StoryDetail = () => {
   const hasAccess = story.has_access;
 
   return (
-    <div className="min-h-screen bg-[#050505]">
+    <div className="min-h-screen bg-[#080d1c]">
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 glass-dark">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 lg:h-20">
             <Link to="/" className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded bg-gradient-to-br from-[#D4AF37] to-[#B8962F] flex items-center justify-center">
-                <span className="font-display text-[#050505] text-xl font-bold">E</span>
-              </div>
+              <img src="/logo.jpg" alt="Emaira" className="w-10 h-10 rounded object-cover" />
               <span className="font-display text-xl text-[#F5F5F0] hidden sm:block">Emaira.Art</span>
             </Link>
 
@@ -304,7 +302,7 @@ const StoryDetail = () => {
             alt={artwork.title}
             className="w-full h-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/70 to-transparent"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-[#080d1c] via-[#080d1c]/70 to-transparent"></div>
         </div>
 
         <div className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 pt-32">

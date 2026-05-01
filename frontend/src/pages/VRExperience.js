@@ -311,7 +311,7 @@ const VRExperience = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="min-h-screen bg-[#080d1c] flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-[#A8A8A0] font-display text-lg">Preparing your experience...</p>
@@ -323,7 +323,7 @@ const VRExperience = () => {
 
   if (!story || !artwork) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="min-h-screen bg-[#080d1c] flex items-center justify-center">
         <div className="text-center">
           <p className="text-[#A8A8A0] mb-4">Experience not found</p>
           <Button onClick={() => navigate('/gallery')} className="btn-gold">
@@ -340,7 +340,7 @@ const VRExperience = () => {
   // Mobile Layout
   if (isMobile) {
     return (
-      <div className="min-h-screen bg-[#050505] flex flex-col" ref={containerRef}>
+      <div className="min-h-screen bg-[#080d1c] flex flex-col" ref={containerRef}>
         {/* Mobile Top Bar */}
         <div className="fixed top-0 left-0 right-0 z-50 glass-dark">
           <div className="flex items-center justify-between h-14 px-4">
@@ -534,7 +534,7 @@ const VRExperience = () => {
 
   // Desktop Layout
   return (
-    <div className="min-h-screen bg-[#050505] flex flex-col" ref={containerRef}>
+    <div className="min-h-screen bg-[#080d1c] flex flex-col" ref={containerRef}>
       {/* Top Bar */}
       <div className="fixed top-0 left-0 right-0 z-50 glass-dark">
         <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
@@ -658,7 +658,7 @@ const VRExperience = () => {
 
                   {/* Visualization Overlay */}
                   {visualization && visualization.image_url && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-[#050505]/50">
+                    <div className="absolute inset-0 flex items-center justify-center bg-[#080d1c]/50">
                       <img
                         src={`${process.env.REACT_APP_BACKEND_URL}${visualization.image_url}`}
                         alt="Forensic Visualization"

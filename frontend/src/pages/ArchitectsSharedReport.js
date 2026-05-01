@@ -60,14 +60,14 @@ const ArchitectsSharedReport = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="min-h-screen bg-[#080d1c] flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
       </div>
     );
   }
   if (err || !data) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center text-center px-6">
+      <div className="min-h-screen bg-[#080d1c] flex items-center justify-center text-center px-6">
         <div className="max-w-md">
           <ShieldCheck className="w-12 h-12 text-[#444] mx-auto mb-4" />
           <h1 className="font-display text-2xl text-[#F5F5F0] mb-2">Share link unavailable</h1>
@@ -81,14 +81,12 @@ const ArchitectsSharedReport = () => {
   const BACKEND = process.env.REACT_APP_BACKEND_URL;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#F5F5F0]" data-testid="architects-shared-report">
+    <div className="min-h-screen bg-[#080d1c] text-[#F5F5F0]" data-testid="architects-shared-report">
       {/* Public banner nav */}
       <nav className="fixed top-0 left-0 right-0 z-50 glass-dark border-b border-[#1a1a1a]">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link to="/architects" className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded bg-gradient-to-br from-[#D4AF37] to-[#B8860B] flex items-center justify-center">
-              <span className="font-display text-[#050505] text-lg font-bold">E</span>
-            </div>
+            <img src="/logo.jpg" alt="Emaira" className="w-9 h-9 rounded object-cover" />
             <div className="leading-tight hidden sm:block">
               <div className="font-display text-base">Emaira<span className="text-[#D4AF37]">.</span>Architects</div>
               <div className="text-[9px] tracking-[0.2em] text-[#A8A8A0] uppercase">Shared Report</div>

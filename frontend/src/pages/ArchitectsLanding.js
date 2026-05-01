@@ -50,14 +50,12 @@ const WORKFLOW = [
 
 const ArchitectsLanding = () => {
   return (
-    <div className="min-h-screen bg-[#050505] text-[#F5F5F0]" data-testid="architects-landing">
+    <div className="min-h-screen bg-[#080d1c] text-[#F5F5F0]" data-testid="architects-landing">
       {/* Nav */}
       <nav className="fixed top-0 left-0 right-0 z-50 glass-dark border-b border-[#1a1a1a]">
         <div className="max-w-7xl mx-auto px-6 h-16 lg:h-20 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded bg-gradient-to-br from-[#D4AF37] to-[#B8860B] flex items-center justify-center">
-              <span className="font-display text-[#050505] text-xl font-bold">E</span>
-            </div>
+            <img src="/logo.jpg" alt="Emaira" className="w-10 h-10 rounded object-cover" />
             <div className="leading-tight hidden sm:block">
               <div className="font-display text-lg">Emaira<span className="text-[#D4AF37]">.</span>Architects</div>
               <div className="text-[10px] tracking-[0.2em] text-[#A8A8A0] uppercase">Construction QC · AI</div>
@@ -120,7 +118,7 @@ const ArchitectsLanding = () => {
                   className="w-full h-full object-cover opacity-90"
                   style={{ maxHeight: "420px" }}
                 />
-                <div className="absolute top-4 left-4 bg-[#050505]/80 backdrop-blur-sm border border-[#D4AF37]/40 rounded px-2.5 py-1 text-[10px] font-mono text-[#D4AF37] uppercase tracking-wider">
+                <div className="absolute top-4 left-4 bg-[#080d1c]/80 backdrop-blur-sm border border-[#D4AF37]/40 rounded px-2.5 py-1 text-[10px] font-mono text-[#D4AF37] uppercase tracking-wider">
                   ● Emaira AI · Site Overview
                 </div>
                 <div className="absolute top-14 left-8 w-24 h-24 rounded border border-rose-500/80 animate-pulse">
@@ -129,7 +127,7 @@ const ArchitectsLanding = () => {
                 <div className="absolute bottom-10 right-8 w-28 h-28 rounded border border-amber-400/80">
                   <span className="absolute -top-5 left-0 text-[10px] font-mono text-amber-300">NO HARDHAT · 92%</span>
                 </div>
-                <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#050505] to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#080d1c] to-transparent" />
               </div>
             </div>
           </div>
@@ -141,7 +139,7 @@ const ArchitectsLanding = () => {
           <div className="mx-auto max-w-7xl px-6">
             <div className="relative rounded-t-2xl overflow-hidden border border-[#222] border-b-0 shadow-[0_-20px_80px_-20px_rgba(212,175,55,0.25)]">
               {/* HUD bar */}
-              <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 py-3 bg-[#050505]/70 backdrop-blur-md border-b border-[#D4AF37]/20">
+              <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-5 py-3 bg-[#080d1c]/70 backdrop-blur-md border-b border-[#D4AF37]/20">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-[#D4AF37] animate-pulse" />
                   <span className="text-[11px] font-mono text-[#D4AF37] uppercase tracking-widest">Emaira AI · Live Analysis</span>
@@ -162,7 +160,7 @@ const ArchitectsLanding = () => {
                 style={{ maxHeight: "520px" }}
               />
               {/* Bottom gradient fade */}
-              <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#050505] to-transparent pointer-events-none" />
+              <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#080d1c] to-transparent pointer-events-none" />
             </div>
           </div>
         </div>

@@ -58,7 +58,7 @@ const PaymentSuccess = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#080d1c] flex items-center justify-center px-4">
       <div className="max-w-md w-full">
         {status === "loading" && (
           <div className="card-obsidian rounded-lg p-8 text-center">

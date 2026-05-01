@@ -9,7 +9,7 @@ const AuthCallback = () => {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+    <div className="min-h-screen bg-[#080d1c] flex items-center justify-center">
       <div className="text-center">
         <div className="w-16 h-16 border-2 border-[#D4AF37] border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
         <h2 className="font-display text-2xl text-[#F5F5F0] mb-2">Authenticating</h2>

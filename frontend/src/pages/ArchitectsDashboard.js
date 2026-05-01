@@ -164,7 +164,7 @@ const ArchitectsDashboard = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center text-[#F5F5F0]">
+      <div className="min-h-screen bg-[#080d1c] flex items-center justify-center text-[#F5F5F0]">
         <div className="max-w-md mx-auto px-6 text-center">
           <Video className="w-14 h-14 mx-auto text-[#D4AF37] mb-6" />
           <h1 className="font-display text-3xl mb-3">Emaira Architects Studio</h1>
@@ -176,13 +176,11 @@ const ArchitectsDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#F5F5F0]">
+    <div className="min-h-screen bg-[#080d1c] text-[#F5F5F0]">
       <nav className="fixed top-0 left-0 right-0 z-50 glass-dark border-b border-[#1a1a1a]">
         <div className="max-w-7xl mx-auto px-6 h-16 lg:h-20 flex items-center justify-between">
           <Link to="/architects" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded bg-gradient-to-br from-[#D4AF37] to-[#B8860B] flex items-center justify-center">
-              <span className="font-display text-[#050505] text-xl font-bold">E</span>
-            </div>
+            <img src="/logo.jpg" alt="Emaira" className="w-10 h-10 rounded object-cover" />
             <div className="leading-tight hidden sm:block">
               <div className="font-display text-lg">Emaira<span className="text-[#D4AF37]">.</span>Architects</div>
               <div className="text-[10px] tracking-[0.2em] text-[#A8A8A0] uppercase">Studio</div>

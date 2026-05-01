@@ -165,11 +165,11 @@ const ArchitectsInspection = () => {
   };
 
   if (!user) {
-    return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-[#A8A8A0]">Please sign in.</div>;
+    return <div className="min-h-screen bg-[#080d1c] flex items-center justify-center text-[#A8A8A0]">Please sign in.</div>;
   }
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="min-h-screen bg-[#080d1c] flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" />
       </div>
     );
@@ -179,7 +179,7 @@ const ArchitectsInspection = () => {
   const BACKEND = process.env.REACT_APP_BACKEND_URL;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#F5F5F0]" data-testid="architects-inspection-detail">
+    <div className="min-h-screen bg-[#080d1c] text-[#F5F5F0]" data-testid="architects-inspection-detail">
       <nav className="fixed top-0 left-0 right-0 z-50 glass-dark border-b border-[#1a1a1a]">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link to="/architects/dashboard" className="flex items-center gap-2 text-[#A8A8A0] hover:text-[#F5F5F0] text-sm">

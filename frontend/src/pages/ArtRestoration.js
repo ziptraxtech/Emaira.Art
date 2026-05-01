@@ -286,7 +286,7 @@ const ArtRestoration = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="min-h-screen bg-[#080d1c] flex items-center justify-center">
         <div className="text-center max-w-md mx-auto p-8">
           <Wand2 className="w-16 h-16 mx-auto text-[#D4AF37] mb-6" />
           <h1 className="font-display text-3xl text-[#F5F5F0] mb-4">Art Restoration Studio</h1>
@@ -302,7 +302,7 @@ const ArtRestoration = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505]">
+    <div className="min-h-screen bg-[#080d1c]">
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 glass-dark border-b border-[#1a1a1a]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
