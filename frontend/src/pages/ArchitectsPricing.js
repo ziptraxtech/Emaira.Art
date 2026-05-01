@@ -19,28 +19,30 @@ const FALLBACK_ARCHITECTS_TIERS = [
   {
     tier_id: "architects_starter",
     name: "Starter",
-    price: 499.0,
+    price: 899.0,
     period: "month",
-    inspection_limit: 10,
+    inspection_limit: 15000,
     is_contact_only: false,
     features: [
-      "10 video inspections / month",
+      "Up to 15,000 sq ft",
+      "Best for single villas and fit-outs",
       "Defect detection (cracks, spalling, misalignment)",
       "Safety monitoring (PPE checks)",
       "PDF/JSON report export",
-      "Up to 500 MB per video",
+      "Up to 500 MB per video clip",
       "Email support",
     ],
   },
   {
     tier_id: "architects_pro",
     name: "Pro",
-    price: 1999.0,
+    price: 2999.0,
     period: "month",
-    inspection_limit: -1,
+    inspection_limit: 60000,
     is_contact_only: false,
     features: [
-      "Unlimited video inspections",
+      "Up to 60,000 sq ft",
+      "Best for mid-rise commercial & residential",
       "All Starter features",
       "Reality vs. Design validation",
       "Custom safety rulesets",
@@ -51,13 +53,16 @@ const FALLBACK_ARCHITECTS_TIERS = [
     ],
   },
   {
-    tier_id: "architects_enterprise",
-    name: "Enterprise",
+    tier_id: "architects_premium",
+    name: "Premium Plan",
     price: 0.0,
-    period: "year",
+    period: "sq ft",
     inspection_limit: -1,
     is_contact_only: true,
     features: [
+      "AED 9.50 – 15.00 / sq ft",
+      "Target Assets: High-rise Commercial and Luxury Residential",
+      "e.g., Business Bay, Saadiyat Island",
       "Everything in Pro",
       "Custom integrations (BIM, Procore, ACC)",
       "On-premise / private cloud deployment",
@@ -128,8 +133,8 @@ const ArchitectsPricing = () => {
           <Badge className="bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30 mb-4">
             <Sparkles className="w-3 h-3 mr-1" /> Emaira Architects Plans
           </Badge>
-          <h1 className="font-display text-4xl lg:text-6xl mb-4">Pricing that scales with your sites.</h1>
-          <p className="text-[#A8A8A0] max-w-2xl mb-12">Every plan includes Gemini 3 Pro video analysis. Cancel anytime. Custom enterprise deals available.</p>
+          <h1 className="font-display text-4xl lg:text-6xl mb-4">A profit-optimised, tier-capped SaaS engine.</h1>
+          <p className="text-[#A8A8A0] max-w-2xl mb-12">Transitioning from pilot pricing to a highly scalable commercial structure tailored for the UAE market.</p>
 
           {loading ? (
             <div className="grid md:grid-cols-3 gap-6">
@@ -150,17 +155,17 @@ const ArchitectsPricing = () => {
                     )}
                     <h3 className="font-display text-2xl mb-1">{tier.name}</h3>
                     <div className="flex items-baseline gap-1 mb-2">
-                      {tier.is_contact_only ? (
-                        <span className="font-display text-4xl">Custom</span>
+                      {tier.tier_id === "architects_premium" ? (
+                        <span className="font-display text-3xl text-[#D4AF37]">AED 9.50 – 15.00 / sq ft</span>
                       ) : (
                         <>
-                          <span className="font-display text-4xl">${tier.price}</span>
-                          <span className="text-sm text-[#A8A8A0]">/{tier.period}</span>
+                          <span className="font-display text-4xl">${tier.price.toLocaleString()}</span>
+                          <span className="text-sm text-[#A8A8A0]">/ mo</span>
                         </>
                       )}
                     </div>
                     <p className="text-sm text-[#A8A8A0] mb-5">
-                      {tier.inspection_limit === -1 ? "Unlimited inspections" : `${tier.inspection_limit} inspections / month`}
+                      {tier.tier_id === "architects_premium" ? "High-rise Commercial & Luxury Residential" : `Up to ${tier.inspection_limit.toLocaleString()} sq ft`}
                     </p>
                     <ul className="space-y-2 mb-6 flex-1">
                       {tier.features.map((f, i) => (
