@@ -177,14 +177,7 @@ function AppRouter() {
       />
       <Route path="/architects" element={<ArchitectsLanding />} />
       <Route path="/architects/pricing" element={<ArchitectsPricing />} />
-      <Route
-        path="/architects/dashboard"
-        element={
-          <ProtectedRoute>
-            <ArchitectsDashboard />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/architects/dashboard" element={<ArchitectsDashboard />} />
       <Route
         path="/architects/inspection/:inspectionId"
         element={
