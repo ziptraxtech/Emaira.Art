@@ -32,6 +32,67 @@ import {
 } from "@/components/ui/tabs";
 import RestorationTeaser from "@/components/RestorationTeaser";
 
+const FALLBACK_TIERS = [
+  {
+    tier_id: "short_story",
+    name: "The Short Story",
+    price: 9.99,
+    currency: "usd",
+    period: "story",
+    features: ["One 3-minute VR experience", "Narrative view only"]
+  },
+  {
+    tier_id: "deep_dive",
+    name: "The Deep Dive",
+    price: 49.00,
+    currency: "usd",
+    period: "story",
+    features: ["Full Narrative view", "Complete Forensic View", "One masterpiece"]
+  },
+  {
+    tier_id: "connoisseur",
+    name: "Annual Connoisseur",
+    price: 249.00,
+    currency: "usd",
+    period: "year",
+    features: ["Unlimited stories", "Monthly New Discovery drops", "Knowledge Dashboard", "Forensic markers tracking"]
+  },
+  {
+    tier_id: "pro_collector",
+    name: "Pro Collector",
+    price: 1499.00,
+    currency: "usd",
+    period: "year",
+    features: [
+      "All Connoisseur features",
+      "Request custom Forensic Stories",
+      "Art Restoration Simulation (5/month)",
+      "Digital Condition Reports",
+      "Priority support",
+      "Exclusive previews"
+    ]
+  },
+  {
+    tier_id: "collectors_advisory",
+    name: "Collector's Advisory",
+    price: 4999.00,
+    currency: "usd",
+    period: "year",
+    features: [
+      "All Pro Collector features",
+      "Unlimited Art Restoration Simulations",
+      "Professional Condition Reports",
+      "Monthly 1-on-1 video consultation with art historian",
+      "Early access to authentication reports",
+      "VIP gallery event invitations",
+      "Personal art portfolio analysis",
+      "Direct curator hotline",
+      "24 advisory sessions per year",
+      "Insurance-grade documentation"
+    ]
+  }
+];
+
 const Pricing = () => {
   const { user, login, logout } = useAuth();
   const navigate = useNavigate();
@@ -48,9 +109,10 @@ const Pricing = () => {
   const fetchTiers = async () => {
     try {
       const response = await axios.get(`${API}/payments/tiers`);
-      setTiers(response.data);
+      setTiers(response.data.length ? response.data : FALLBACK_TIERS);
     } catch (error) {
       console.error("Error fetching tiers:", error);
+      setTiers(FALLBACK_TIERS);
     } finally {
       setLoading(false);
     }
