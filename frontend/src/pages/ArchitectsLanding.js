@@ -84,7 +84,7 @@ const ArchitectsLanding = () => {
              style={{ backgroundImage: "linear-gradient(rgba(212,175,55,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(212,175,55,0.5) 1px, transparent 1px)", backgroundSize: "56px 56px" }} />
         <div className="max-w-7xl mx-auto px-6 relative">
           <div className="grid lg:grid-cols-12 gap-10 items-center">
-            <div className="lg:col-span-7">
+            <div className="lg:col-span-8">
               <Badge className="bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30 mb-6">
                 <Sparkles className="w-3 h-3 mr-1" /> New Business Line · Powered by Gemini 3 Pro
               </Badge>
@@ -109,28 +109,24 @@ const ArchitectsLanding = () => {
                 </Link>
               </div>
             </div>
-            <div className="lg:col-span-5">
-              <div className="relative">
+            <div className="lg:col-span-4">
+              <div className="relative w-[75%] ml-auto">
                 <div className="absolute -inset-6 rounded-2xl bg-gradient-to-br from-[#D4AF37]/20 via-transparent to-transparent blur-3xl" />
                 <div className="relative card-obsidian rounded-xl overflow-hidden border border-[#222]">
                   <div className="aspect-[4/3] bg-[#0a0a0a] relative">
-                    <img
-                      src="https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1200&q=80"
-                      alt="Construction site"
-                      className="w-full h-full object-cover opacity-90"
+                    <video
+                      src="/WhatsApp Video 2026-05-01 at 12.05.27.mp4"
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover"
                     />
                     {/* HUD overlays */}
                     <div className="absolute top-4 left-4 bg-[#050505]/80 backdrop-blur-sm border border-[#D4AF37]/40 rounded px-2.5 py-1 text-[10px] font-mono text-[#D4AF37] uppercase tracking-wider">
                       ● Emaira AI · Live Analysis
                     </div>
-                    <div className="absolute top-16 left-10 w-24 h-24 rounded border border-rose-500/80 animate-pulse">
-                      <span className="absolute -top-5 left-0 text-[10px] font-mono text-rose-400">CRACK · 87%</span>
-                    </div>
-                    <div className="absolute bottom-12 right-10 w-28 h-32 rounded border border-amber-400/80">
-                      <span className="absolute -top-5 left-0 text-[10px] font-mono text-amber-300">NO HARDHAT · 92%</span>
-                    </div>
                     <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-[11px] font-mono text-[#A8A8A0]">
-                      <span>00:42 / 03:18</span>
                       <span>defects 3 · safety 2 · design 1</span>
                     </div>
                   </div>
@@ -158,12 +154,12 @@ const ArchitectsLanding = () => {
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
-                { label: "Smartphone camera", icon: "📱" },
-                { label: "360° special cams", icon: "🔭" },
-                { label: "Drone + helmet-cam", icon: "🎥" },
-                { label: "PDF/JSON export · 500 MB / clip", icon: "📄" },
+                { label: "Smartphone camera", icon: "📱", color: "from-blue-900/40 to-blue-800/10", ring: "ring-blue-800/30" },
+                { label: "360° special cams", icon: "🔭", color: "from-violet-900/40 to-violet-800/10", ring: "ring-violet-800/30" },
+                { label: "Drone + helmet-cam", icon: "🎥", color: "from-amber-900/40 to-amber-800/10", ring: "ring-amber-700/30" },
+                { label: "PDF/JSON export · 500 MB / clip", icon: "📄", color: "from-emerald-900/40 to-emerald-800/10", ring: "ring-emerald-800/30" },
               ].map((item) => (
-                <div key={item.label} className="card-obsidian rounded-xl p-5 border border-[#1a1a1a] text-center">
+                <div key={item.label} className={`card-obsidian rounded-xl p-5 bg-gradient-to-br ${item.color} ring-1 ${item.ring} text-center`}>
                   <div className="text-3xl mb-3">{item.icon}</div>
                   <p className="text-xs text-[#A8A8A0] leading-snug">{item.label}</p>
                 </div>
