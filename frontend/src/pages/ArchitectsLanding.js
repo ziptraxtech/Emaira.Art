@@ -153,7 +153,7 @@ const ArchitectsLanding = () => {
                 </div>
               </div>
               <video
-                src="/WhatsApp Video 2026-05-01 at 12.05.27.mp4"
+                src="/site-demo.mp4"
                 autoPlay
                 loop
                 muted
