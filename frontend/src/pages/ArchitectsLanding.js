@@ -83,30 +83,54 @@ const ArchitectsLanding = () => {
         <div className="absolute inset-0 opacity-[0.08] pointer-events-none"
              style={{ backgroundImage: "linear-gradient(rgba(212,175,55,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(212,175,55,0.5) 1px, transparent 1px)", backgroundSize: "56px 56px" }} />
         <div className="max-w-7xl mx-auto px-6 relative">
-          {/* Text block — full width on mobile, half on desktop */}
-          <div className="max-w-2xl mb-10">
-            <Badge className="bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30 mb-6">
-              <Sparkles className="w-3 h-3 mr-1" /> New Business Line · Powered by Gemini 3 Pro
-            </Badge>
-            <h1 className="font-display text-4xl sm:text-5xl lg:text-7xl leading-[1.05] mb-6">
-              Video AI<br />
-              <span className="text-[#D4AF37]">QC / QA</span> for<br />
-              every job site.
-            </h1>
-            <p className="text-lg text-[#A8A8A0] max-w-xl mb-8">
-              Emaira Architects ingests your site video and returns a structural defect log, a PPE safety sheet, and design-vs-reality deviations — in minutes, not weeks.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Link to="/architects/dashboard">
-                <Button className="btn-gold text-base px-6 py-6 w-full sm:w-auto" data-testid="architects-hero-cta">
-                  <Video className="w-4 h-4 mr-2" /> Start an Inspection
-                </Button>
-              </Link>
-              <Link to="/architects/pricing">
-                <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111] px-6 py-6 w-full sm:w-auto">
-                  See Pricing
-                </Button>
-              </Link>
+          {/* Two-col on desktop: text left, image right. Stacked on mobile. */}
+          <div className="grid lg:grid-cols-2 gap-10 items-center mb-10">
+            <div>
+              <Badge className="bg-[#D4AF37]/15 text-[#D4AF37] border-[#D4AF37]/30 mb-6">
+                <Sparkles className="w-3 h-3 mr-1" /> New Business Line · Powered by Gemini 3 Pro
+              </Badge>
+              <h1 className="font-display text-4xl sm:text-5xl lg:text-7xl leading-[1.05] mb-6">
+                Video AI<br />
+                <span className="text-[#D4AF37]">QC / QA</span> for<br />
+                every job site.
+              </h1>
+              <p className="text-lg text-[#A8A8A0] max-w-xl mb-8">
+                Emaira Architects ingests your site video and returns a structural defect log, a PPE safety sheet, and design-vs-reality deviations — in minutes, not weeks.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link to="/architects/dashboard">
+                  <Button className="btn-gold text-base px-6 py-6 w-full sm:w-auto" data-testid="architects-hero-cta">
+                    <Video className="w-4 h-4 mr-2" /> Start an Inspection
+                  </Button>
+                </Link>
+                <Link to="/architects/pricing">
+                  <Button variant="outline" className="border-[#333] text-[#F5F5F0] hover:bg-[#111] px-6 py-6 w-full sm:w-auto">
+                    See Pricing
+                  </Button>
+                </Link>
+              </div>
+            </div>
+            {/* Construction image — desktop only */}
+            <div className="hidden lg:block relative">
+              <div className="absolute -inset-4 rounded-2xl bg-gradient-to-br from-[#D4AF37]/20 via-transparent to-transparent blur-3xl" />
+              <div className="relative rounded-xl overflow-hidden border border-[#222]">
+                <img
+                  src="https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1200&q=80"
+                  alt="Construction site"
+                  className="w-full h-full object-cover opacity-90"
+                  style={{ maxHeight: "420px" }}
+                />
+                <div className="absolute top-4 left-4 bg-[#050505]/80 backdrop-blur-sm border border-[#D4AF37]/40 rounded px-2.5 py-1 text-[10px] font-mono text-[#D4AF37] uppercase tracking-wider">
+                  ● Emaira AI · Site Overview
+                </div>
+                <div className="absolute top-14 left-8 w-24 h-24 rounded border border-rose-500/80 animate-pulse">
+                  <span className="absolute -top-5 left-0 text-[10px] font-mono text-rose-400">CRACK · 87%</span>
+                </div>
+                <div className="absolute bottom-10 right-8 w-28 h-28 rounded border border-amber-400/80">
+                  <span className="absolute -top-5 left-0 text-[10px] font-mono text-amber-300">NO HARDHAT · 92%</span>
+                </div>
+                <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#050505] to-transparent" />
+              </div>
             </div>
           </div>
         </div>
