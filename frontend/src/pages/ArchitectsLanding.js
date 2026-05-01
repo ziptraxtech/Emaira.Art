@@ -109,9 +109,7 @@ const ArchitectsLanding = () => {
                 </Link>
               </div>
               <div className="flex flex-wrap items-center gap-6 mt-10 text-xs text-[#666660]">
-                <span className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-[#D4AF37]" /> Drone + helmet-cam footage</span>
-                <span className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-[#D4AF37]" /> 500 MB / clip</span>
-                <span className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-[#D4AF37]" /> PDF/JSON export</span>
+                <span className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-[#D4AF37]" /> Drone + helmet-cam footage · 500 MB / clip · PDF/JSON export</span>
               </div>
             </div>
             <div className="lg:col-span-5">
@@ -141,6 +139,34 @@ const ArchitectsLanding = () => {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* About — Eliminating the visibility gap */}
+      <section className="py-20 border-t border-[#111]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <h2 className="font-display text-4xl lg:text-5xl leading-tight mb-6">
+                Eliminating the visibility gap in modern construction
+              </h2>
+              <p className="text-[#A8A8A0] text-lg leading-relaxed">
+                Emaira is an AI-first B2B SaaS platform that removes manual data entry from the project management lifecycle. By leveraging magnet-mounted 360-degree cameras and proprietary computer vision, we automate defect detection and progress tracking.
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                { label: "Drone + helmet-cam footage", icon: "🎥" },
+                { label: "500 MB / clip", icon: "📦" },
+                { label: "PDF/JSON export", icon: "📄" },
+              ].map((item) => (
+                <div key={item.label} className="card-obsidian rounded-xl p-5 border border-[#1a1a1a] text-center">
+                  <div className="text-3xl mb-3">{item.icon}</div>
+                  <p className="text-xs text-[#A8A8A0] leading-snug">{item.label}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
