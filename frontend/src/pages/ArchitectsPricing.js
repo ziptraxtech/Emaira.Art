@@ -87,7 +87,7 @@ const ArchitectsPricing = () => {
 
   const handleSubscribe = async (tier) => {
     if (tier.is_contact_only) {
-      window.location.href = "mailto:architects@emaira.art?subject=Enterprise%20inquiry";
+      window.location.href = "mailto:hello@emaira.art?subject=Enterprise%20inquiry";
       return;
     }
     if (!user) {
@@ -102,7 +102,7 @@ const ArchitectsPricing = () => {
       );
       if (data.url) window.location.href = data.url;
     } catch {
-      toast.error("Could not start checkout. Contact architects@emaira.art.");
+      toast.error("Could not start checkout. Contact hello@emaira.art.");
     }
   };
 
@@ -190,7 +190,7 @@ const ArchitectsPricing = () => {
 
           <div className="mt-16 text-center text-sm text-[#666660]">
             <Building2 className="w-5 h-5 mx-auto text-[#D4AF37] mb-2" />
-            Running 5+ concurrent projects? <a href="mailto:architects@emaira.art" className="text-[#D4AF37] hover:underline">Talk to us</a>.
+            Running 5+ concurrent projects? <a href="mailto:hello@emaira.art" className="text-[#D4AF37] hover:underline">Talk to us</a>.
             <X className="hidden" />
           </div>
         </div>
