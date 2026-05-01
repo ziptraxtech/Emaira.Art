@@ -15,6 +15,59 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+const FALLBACK_ARCHITECTS_TIERS = [
+  {
+    tier_id: "architects_starter",
+    name: "Starter",
+    price: 499.0,
+    period: "month",
+    inspection_limit: 10,
+    is_contact_only: false,
+    features: [
+      "10 video inspections / month",
+      "Defect detection (cracks, spalling, misalignment)",
+      "Safety monitoring (PPE checks)",
+      "PDF/JSON report export",
+      "Up to 500 MB per video",
+      "Email support",
+    ],
+  },
+  {
+    tier_id: "architects_pro",
+    name: "Pro",
+    price: 1999.0,
+    period: "month",
+    inspection_limit: -1,
+    is_contact_only: false,
+    features: [
+      "Unlimited video inspections",
+      "All Starter features",
+      "Reality vs. Design validation",
+      "Custom safety rulesets",
+      "Team workspace (up to 10 users)",
+      "Priority Gemini 3 Pro analysis queue",
+      "Slack / Teams webhook alerts",
+      "Dedicated support",
+    ],
+  },
+  {
+    tier_id: "architects_enterprise",
+    name: "Enterprise",
+    price: 0.0,
+    period: "year",
+    inspection_limit: -1,
+    is_contact_only: true,
+    features: [
+      "Everything in Pro",
+      "Custom integrations (BIM, Procore, ACC)",
+      "On-premise / private cloud deployment",
+      "Custom CV model fine-tuning",
+      "24/7 SLA",
+      "Dedicated account manager",
+    ],
+  },
+];
+
 const ArchitectsPricing = () => {
   const { user, login } = useAuth();
   const [tiers, setTiers] = useState([]);
@@ -22,8 +75,8 @@ const ArchitectsPricing = () => {
 
   useEffect(() => {
     axios.get(`${API}/architects/tiers`)
-      .then((r) => setTiers(r.data))
-      .catch((e) => console.error(e))
+      .then((r) => setTiers(Array.isArray(r.data) ? r.data : FALLBACK_ARCHITECTS_TIERS))
+      .catch(() => setTiers(FALLBACK_ARCHITECTS_TIERS))
       .finally(() => setLoading(false));
   }, []);
 

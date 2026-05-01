@@ -42,7 +42,7 @@ const LandingPage = () => {
   const fetchFeaturedArtworks = async () => {
     try {
       const response = await axios.get(`${API}/artworks/?featured=true&limit=4`);
-      setFeaturedArtworks(response.data);
+      setFeaturedArtworks(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error("Error fetching artworks:", error);
     }

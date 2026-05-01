@@ -46,7 +46,7 @@ const Gallery = () => {
   const fetchArtworks = async () => {
     try {
       const response = await axios.get(`${API}/artworks/?limit=20`);
-      setArtworks(response.data);
+      setArtworks(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error("Error fetching artworks:", error);
     } finally {
