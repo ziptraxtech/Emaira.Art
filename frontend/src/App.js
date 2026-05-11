@@ -1,5 +1,6 @@
-import { createContext, useContext, Component } from "react";
-import { ClerkProvider, useUser, useClerk } from "@clerk/clerk-react";
+import { createContext, useContext, Component, useEffect, useRef } from "react";
+import { ClerkProvider, useUser, useClerk, useAuth as useClerkAuth } from "@clerk/clerk-react";
+import axios from "axios";
 import "@/App.css";
 
 class ErrorBoundary extends Component {
@@ -58,7 +59,9 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const { user: clerkUser, isLoaded } = useUser();
+  const { getToken } = useClerkAuth();
   const clerk = useClerk();
+  const sessionCreated = useRef(false);
 
   const user = clerkUser
     ? {
@@ -69,11 +72,46 @@ export const AuthProvider = ({ children }) => {
       }
     : null;
 
+  // Attach Clerk JWT to every axios request
+  useEffect(() => {
+    if (!clerkUser) return;
+    const interceptor = axios.interceptors.request.use(async (config) => {
+      const token = await getToken();
+      if (token) config.headers.Authorization = `Bearer ${token}`;
+      return config;
+    });
+    return () => axios.interceptors.request.eject(interceptor);
+  }, [clerkUser, getToken]);
+
+  // Register user in backend on first Clerk login
+  useEffect(() => {
+    if (!clerkUser || sessionCreated.current) return;
+    sessionCreated.current = true;
+    (async () => {
+      try {
+        const token = await getToken();
+        await axios.post(
+          `${API}/auth/session`,
+          {
+            clerk_token: token,
+            email: clerkUser.primaryEmailAddress?.emailAddress || "",
+            name: clerkUser.fullName || clerkUser.firstName || clerkUser.username || "User",
+            picture: clerkUser.imageUrl || "",
+          },
+          { withCredentials: true }
+        );
+      } catch (e) {
+        console.error("Backend session creation failed", e);
+      }
+    })();
+  }, [clerkUser, getToken]);
+
   const loading = !isLoaded;
   const setUser = () => {};
   const checkAuth = () => {};
   const login = () => clerk.openSignIn();
   const logout = async () => {
+    sessionCreated.current = false;
     await clerk.signOut();
     window.location.href = "/";
   };

@@ -1,5 +1,15 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Runtime cache — videos, keyframes, segmented outputs
+backend/routers/cache/
+
+# Environment files — never commit secrets
+.env
+.env.local
+.env*.local
+backend/.env
+frontend/.env
+
 # IDE and editors
 .idea/
 .vscode/

@@ -18,7 +18,9 @@ import asyncio
 import resend
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+# Root .env is the single source of truth; backend/.env can override locally
+load_dotenv(ROOT_DIR.parent / '.env')
+load_dotenv(ROOT_DIR / '.env', override=False)
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -31,6 +33,31 @@ SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 
 # Met Museum API configuration
 MET_MUSEUM_API_BASE = os.environ.get('MET_MUSEUM_API_BASE', 'https://collectionapi.metmuseum.org/public/collection/v1')
+
+# Clerk JWT verification
+CLERK_JWKS_URL = os.environ.get('CLERK_JWKS_URL', 'https://arriving-octopus-7.clerk.accounts.dev/.well-known/jwks.json')
+_clerk_jwks_cache = None
+
+async def _get_clerk_jwks():
+    global _clerk_jwks_cache
+    if _clerk_jwks_cache:
+        return _clerk_jwks_cache
+    async with httpx.AsyncClient() as c:
+        resp = await c.get(CLERK_JWKS_URL, timeout=10)
+        _clerk_jwks_cache = resp.json()
+    return _clerk_jwks_cache
+
+async def verify_clerk_jwt(token: str) -> Optional[dict]:
+    try:
+        from jose import jwt as jose_jwt
+        jwks = await _get_clerk_jwks()
+        header = jose_jwt.get_unverified_header(token)
+        key = next((k for k in jwks.get("keys", []) if k.get("kid") == header.get("kid")), None)
+        if not key:
+            return None
+        return jose_jwt.decode(token, key, algorithms=["RS256"])
+    except Exception:
+        return None
 
 # Create the main app
 app = FastAPI(title="Emaira.Art API")
@@ -373,15 +400,37 @@ SUBSCRIPTION_TIERS = {
 # ===================== AUTH HELPER =====================
 
 async def get_current_user(request: Request) -> Optional[User]:
+    # Try Clerk JWT Bearer token first
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        bearer_token = auth_header.split(" ")[1]
+        claims = await verify_clerk_jwt(bearer_token)
+        if claims:
+            clerk_user_id = claims.get("sub")
+            if clerk_user_id:
+                user_doc = await db.users.find_one({"clerk_user_id": clerk_user_id}, {"_id": 0})
+                if user_doc:
+                    return User(**user_doc)
+                # First request before /auth/session completes — auto-create minimal user
+                new_user_id = f"user_{uuid.uuid4().hex[:12]}"
+                new_doc = {
+                    "user_id": new_user_id,
+                    "clerk_user_id": clerk_user_id,
+                    "email": "",
+                    "name": "User",
+                    "picture": "",
+                    "role": "user",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+                await db.users.insert_one(new_doc)
+                new_doc.pop("_id", None)
+                return User(**new_doc)
+
+    # Fall back to session cookie
     session_token = request.cookies.get("session_token")
     if not session_token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            session_token = auth_header.split(" ")[1]
-    
-    if not session_token:
         return None
-    
+
     session_doc = await db.user_sessions.find_one({"session_token": session_token}, {"_id": 0})
     if not session_doc:
         return None
@@ -464,41 +513,57 @@ async def log_activity(user_id: str, activity_type: str, details: Dict[str, Any]
 @auth_router.post("/session")
 async def create_session(request: Request, response: Response):
     body = await request.json()
+    clerk_token = body.get("clerk_token")
     session_id = body.get("session_id")
+
+    if clerk_token:
+        # Clerk JWT path
+        claims = await verify_clerk_jwt(clerk_token)
+        if not claims:
+            raise HTTPException(status_code=401, detail="Invalid Clerk token")
+        clerk_user_id = claims.get("sub")
+        email = body.get("email", "")
+        name = body.get("name", "")
+        picture = body.get("picture", "")
+        session_token = clerk_token
+    elif session_id:
+        # Legacy emergentagent path
+        async with httpx.AsyncClient() as client_http:
+            try:
+                auth_response = await client_http.get(
+                    "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+                    headers={"X-Session-ID": session_id}
+                )
+                if auth_response.status_code != 200:
+                    raise HTTPException(status_code=401, detail="Invalid session")
+                user_data = auth_response.json()
+            except Exception as e:
+                logger.error(f"Auth error: {e}")
+                raise HTTPException(status_code=401, detail="Authentication failed")
+        email = user_data.get("email")
+        name = user_data.get("name")
+        picture = user_data.get("picture")
+        session_token = user_data.get("session_token")
+        clerk_user_id = None
+    else:
+        raise HTTPException(status_code=400, detail="clerk_token or session_id is required")
     
-    if not session_id:
-        raise HTTPException(status_code=400, detail="session_id is required")
-    
-    async with httpx.AsyncClient() as client_http:
-        try:
-            auth_response = await client_http.get(
-                "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-                headers={"X-Session-ID": session_id}
-            )
-            if auth_response.status_code != 200:
-                raise HTTPException(status_code=401, detail="Invalid session")
-            
-            user_data = auth_response.json()
-        except Exception as e:
-            logger.error(f"Auth error: {e}")
-            raise HTTPException(status_code=401, detail="Authentication failed")
-    
-    email = user_data.get("email")
-    name = user_data.get("name")
-    picture = user_data.get("picture")
-    session_token = user_data.get("session_token")
-    
-    existing_user = await db.users.find_one({"email": email}, {"_id": 0})
-    
+    # Look up by clerk_user_id first, then fall back to email
+    existing_user = None
+    if clerk_user_id:
+        existing_user = await db.users.find_one({"clerk_user_id": clerk_user_id}, {"_id": 0})
+    if not existing_user and email:
+        existing_user = await db.users.find_one({"email": email}, {"_id": 0})
+
     # Admin emails list (can be configured)
     admin_emails = ["admin@emaira.art"]
-    
+
     if existing_user:
         user_id = existing_user["user_id"]
-        await db.users.update_one(
-            {"user_id": user_id},
-            {"$set": {"name": name, "picture": picture, "last_active": datetime.now(timezone.utc).isoformat()}}
-        )
+        update_fields = {"name": name, "picture": picture, "last_active": datetime.now(timezone.utc).isoformat()}
+        if clerk_user_id:
+            update_fields["clerk_user_id"] = clerk_user_id
+        await db.users.update_one({"user_id": user_id}, {"$set": update_fields})
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
         role = "admin" if email in admin_emails else "user"
@@ -511,8 +576,10 @@ async def create_session(request: Request, response: Response):
         )
         user_doc = new_user.model_dump()
         user_doc["created_at"] = user_doc["created_at"].isoformat()
+        if clerk_user_id:
+            user_doc["clerk_user_id"] = clerk_user_id
         await db.users.insert_one(user_doc)
-        
+
         # Send welcome notification for new users
         await db.notifications.insert_one({
             "notification_id": f"notif_{uuid.uuid4().hex[:12]}",
@@ -524,9 +591,9 @@ async def create_session(request: Request, response: Response):
             "is_read": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-    
-    await log_activity(user_id, "login", {"method": "google_oauth"})
-    
+
+    await log_activity(user_id, "login", {"method": "clerk" if clerk_token else "google_oauth"})
+
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     session_doc = {
         "session_id": str(uuid.uuid4()),
@@ -536,13 +603,14 @@ async def create_session(request: Request, response: Response):
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.user_sessions.insert_one(session_doc)
-    
+
+    is_https = request.url.scheme == "https"
     response.set_cookie(
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=is_https,
+        samesite="none" if is_https else "lax",
         path="/",
         max_age=7 * 24 * 60 * 60
     )
@@ -5320,12 +5388,29 @@ api_router.include_router(architects_router)
 async def root():
     return {"message": "Emaira.Art API - VR Storyteller + AI Art Forensics"}
 
+@api_router.get("/debug/auth")
+async def debug_auth(request: Request):
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else None
+    if not token:
+        return {"status": "no_token"}
+    claims = await verify_clerk_jwt(token)
+    if not claims:
+        return {"status": "invalid_token", "token_prefix": token[:20]}
+    user = await get_current_user(request)
+    return {"status": "ok", "clerk_sub": claims.get("sub"), "user_found": user is not None}
+
 app.include_router(api_router)
+
+_raw_origins = os.environ.get('CORS_ORIGINS', 'http://localhost:3000')
+_cors_origins = [o.strip() for o in _raw_origins.split(',') if o.strip() and o.strip() != '*']
+if not _cors_origins:
+    _cors_origins = ["http://localhost:3000"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

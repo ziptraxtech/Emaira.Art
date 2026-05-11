@@ -24,7 +24,13 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+import httpx
 import _runtime as rt
+
+SEGMENTATION_URL = os.getenv(
+    "SEGMENTATION_URL",
+    "http://defect-alb-1564603409.ap-south-1.elb.amazonaws.com/segment-video",
+)
 
 
 # ===== Models =====
@@ -53,6 +59,9 @@ class ArchitectsInspection(BaseModel):
     frame_height: Optional[int] = None
     keyframe_count: int = 0
     design_reference_image_id: Optional[str] = None
+    segmented_video_filename: Optional[str] = None
+    segmentation_frames: Optional[int] = None
+    segmentation_detections: Optional[int] = None
     notes: Optional[str] = None
     status: str = "uploaded"  # uploaded, analyzing, completed, failed
     analysis_started_at: Optional[datetime] = None
@@ -397,7 +406,10 @@ async def stream_architects_video(inspection_id: str, request: Request):
     )
     if not insp:
         raise HTTPException(status_code=404, detail="Inspection not found")
-    # Find the stored file (extension varies)
+    # Prefer YOLO-segmented video; fall back to original
+    seg = ARCHITECTS_VIDEO_DIR / f"{inspection_id}_segmented.mp4"
+    if seg.exists():
+        return FileResponse(seg, media_type="video/mp4")
     for ext in (".mp4", ".mov", ".m4v", ".webm"):
         p = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
         if p.exists():
@@ -469,6 +481,60 @@ def _architects_prompt(inspection_type: str, inspection_title: str) -> str:
     return base
 
 
+async def _call_segmentation(
+    video_path: Path, inspection_id: str
+) -> tuple[Optional[Path], Optional[int], Optional[int]]:
+    """POST video to ECS YOLO service (async job pattern), poll until done, download result.
+    Returns (segmented_path, frames, detections) or (None, None, None) on failure."""
+    out_path = ARCHITECTS_VIDEO_DIR / f"{inspection_id}_segmented.mp4"
+    base_url = SEGMENTATION_URL.rsplit("/segment-video", 1)[0]
+    mime_map = {".mp4": "video/mp4", ".mov": "video/quicktime", ".m4v": "video/mp4", ".webm": "video/webm"}
+    mime = mime_map.get(video_path.suffix.lower(), "video/mp4")
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            # Step 1: submit job
+            with open(video_path, "rb") as f:
+                resp = await client.post(
+                    f"{base_url}/segment-video",
+                    files={"file": (video_path.name, f, mime)},
+                )
+            if resp.status_code != 200:
+                rt.logger.warning("Segmentation submit HTTP %s", resp.status_code)
+                return None, None, None
+            job_id = resp.json().get("job_id")
+            if not job_id:
+                rt.logger.warning("Segmentation: no job_id in response")
+                return None, None, None
+
+            # Step 2: poll status
+            for _ in range(120):  # up to ~10 min (5s intervals)
+                await asyncio.sleep(5)
+                status_resp = await client.get(f"{base_url}/jobs/{job_id}/status")
+                status = status_resp.json().get("status")
+                if status == "done":
+                    break
+                if status in ("error", "not_found"):
+                    rt.logger.warning("Segmentation job %s failed: %s", job_id, status_resp.json())
+                    return None, None, None
+
+            # Step 3: download segmented video
+            async with client.stream("GET", f"{base_url}/jobs/{job_id}/download") as dl:
+                if dl.status_code != 200:
+                    rt.logger.warning("Segmentation download HTTP %s", dl.status_code)
+                    return None, None, None
+                frames = int(dl.headers.get("x-frames") or 0) or None
+                detections = int(dl.headers.get("x-detections") or 0) or None
+                with open(out_path, "wb") as out:
+                    async for chunk in dl.aiter_bytes(1 << 20):
+                        out.write(chunk)
+
+        return out_path, frames, detections
+    except Exception as exc:
+        rt.logger.warning("Segmentation failed, falling back to original: %s", exc)
+        out_path.unlink(missing_ok=True)
+        return None, None, None
+
+
 async def _run_architects_analysis(inspection_id: str, user_id: str):
     """Background analysis worker. Updates the inspection doc + findings collection."""
     insp = await rt.db.architects_inspections.find_one(
@@ -488,6 +554,20 @@ async def _run_architects_analysis(inspection_id: str, user_id: str):
             {"$set": {"status": "failed", "error_message": "Video file missing"}},
         )
         return
+
+    # Run YOLO segmentation; fall back to original on failure
+    seg_path, seg_frames, seg_detections = await _call_segmentation(video_path, inspection_id)
+    if seg_path:
+        await rt.db.architects_inspections.update_one(
+            {"inspection_id": inspection_id},
+            {"$set": {
+                "segmented_video_filename": seg_path.name,
+                "segmentation_frames": seg_frames,
+                "segmentation_detections": seg_detections,
+            }},
+        )
+    analysis_video_path = seg_path if seg_path else video_path
+
     # Optional design reference (BIM image) for design_validation
     design_ref_path = None
     if insp.get("inspection_type") == "design_validation" and insp.get("design_reference_image_id"):
@@ -495,34 +575,60 @@ async def _run_architects_analysis(inspection_id: str, user_id: str):
         if ref_p.exists():
             design_ref_path = ref_p
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
-        api_key = os.getenv("EMERGENT_LLM_KEY")
+        from google import genai as _genai
+        from google.genai import types as _gtypes
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("EMERGENT_LLM_KEY")
         if not api_key:
-            raise RuntimeError("EMERGENT_LLM_KEY missing")
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"arch_{inspection_id}",
-            system_message="You are Emaira Architects AI, a construction QC expert. Always reply in strict JSON.",
-        ).with_model("gemini", "gemini-3.1-pro-preview")
+            raise RuntimeError("GEMINI_API_KEY missing")
+        gemini = _genai.Client(api_key=api_key)
         mime = {
             ".mp4": "video/mp4", ".mov": "video/quicktime",
             ".m4v": "video/mp4", ".webm": "video/webm",
-        }[video_path.suffix.lower()]
-        files = [FileContentWithMimeType(file_path=str(video_path), mime_type=mime)]
+        }.get(analysis_video_path.suffix.lower(), "video/mp4")
+
+        # Upload segmented (or original fallback) video to Gemini Files API
+        video_upload = await asyncio.to_thread(
+            gemini.files.upload,
+            file=analysis_video_path,
+            config=_gtypes.UploadFileConfig(mime_type=mime, display_name=inspection_id),
+        )
+        # Wait for Gemini to finish processing the video
+        while video_upload.state == _gtypes.FileState.PROCESSING:
+            await asyncio.sleep(3)
+            video_upload = await asyncio.to_thread(gemini.files.get, name=video_upload.name)
+        if video_upload.state == _gtypes.FileState.FAILED:
+            raise RuntimeError("Gemini file processing failed")
+
+        parts = [_gtypes.Part.from_uri(file_uri=video_upload.uri, mime_type=mime)]
+
         if design_ref_path is not None:
             ref_mime = {
                 ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                 ".png": "image/png", ".webp": "image/webp",
             }.get(design_ref_path.suffix.lower(), "image/jpeg")
-            files.append(FileContentWithMimeType(file_path=str(design_ref_path), mime_type=ref_mime))
+            design_upload = await asyncio.to_thread(
+                gemini.files.upload,
+                file=design_ref_path,
+                config=_gtypes.UploadFileConfig(mime_type=ref_mime),
+            )
+            parts.append(_gtypes.Part.from_uri(file_uri=design_upload.uri, mime_type=ref_mime))
+
         prompt = _architects_prompt(insp["inspection_type"], insp["title"])
         if design_ref_path is not None:
             prompt += (
                 "\n\nThe SECOND attachment is the reference BIM/design drawing or render. "
                 "Compare each frame of the video to this reference and call out every visible deviation."
             )
-        response = await chat.send_message(UserMessage(text=prompt, file_contents=files))
-        raw = (response or "").strip()
+        parts.append(_gtypes.Part.from_text(text=prompt))
+
+        resp = await gemini.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[_gtypes.Content(role="user", parts=parts)],
+            config=_gtypes.GenerateContentConfig(
+                system_instruction="You are Emaira Architects AI, a construction QC expert. Always reply in strict JSON.",
+            ),
+        )
+        raw = (resp.text or "").strip()
         if raw.startswith("```"):
             raw = raw.split("```", 2)[1]
             if raw.lower().startswith("json"):
@@ -637,9 +743,10 @@ async def delete_architects_inspection(inspection_id: str, request: Request):
     await rt.db.architects_inspections.delete_one({"inspection_id": inspection_id})
     await rt.db.architects_findings.delete_many({"inspection_id": inspection_id})
     await rt.db.architects_share_links.delete_many({"inspection_id": inspection_id})
-    # Clean up video + keyframes + design reference
+    # Clean up video + segmented video + keyframes + design reference
     for ext in (".mp4", ".mov", ".m4v", ".webm"):
         (ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}").unlink(missing_ok=True)
+    (ARCHITECTS_VIDEO_DIR / f"{inspection_id}_segmented.mp4").unlink(missing_ok=True)
     for f in ARCHITECTS_KEYFRAME_DIR.glob(f"{inspection_id}_*"):
         f.unlink(missing_ok=True)
     return {"deleted": True, "inspection_id": inspection_id}
@@ -924,6 +1031,9 @@ async def stream_architects_shared_video(token: str):
     if not link:
         raise HTTPException(status_code=404, detail="Share link not found")
     inspection_id = link["inspection_id"]
+    seg = ARCHITECTS_VIDEO_DIR / f"{inspection_id}_segmented.mp4"
+    if seg.exists():
+        return FileResponse(seg, media_type="video/mp4")
     for ext in (".mp4", ".mov", ".m4v", ".webm"):
         p = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
         if p.exists():
