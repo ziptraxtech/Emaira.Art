@@ -43,7 +43,7 @@ import ArchitectsDashboard from "@/pages/ArchitectsDashboard";
 import ArchitectsInspection from "@/pages/ArchitectsInspection";
 import ArchitectsSharedReport from "@/pages/ArchitectsSharedReport";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 export const API = `${BACKEND_URL}/api`;
 
 // Auth Context
@@ -225,3 +225,4 @@ function App() {
 }
 
 export default App;
+
