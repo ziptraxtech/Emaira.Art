@@ -122,8 +122,6 @@ const ArchitectsDashboard = () => {
     setUploadForm((s) => ({ ...s, file: f, title: s.title || f.name.replace(/\.[^.]+$/, "") }));
   };
 
-  const CHUNK_SIZE = 3 * 1024 * 1024; // 3 MB — stays under Vercel's 4.5 MB function body limit
-
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!uploadForm.file || !uploadForm.project_id || !uploadForm.title) {
@@ -134,33 +132,35 @@ const ArchitectsDashboard = () => {
     setUploadProgress(0);
     try {
       const file = uploadForm.file;
-      const uploadId = crypto.randomUUID();
-      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const blob = file.slice(start, Math.min(start + CHUNK_SIZE, file.size));
-        const fd = new FormData();
-        fd.append("upload_id", uploadId);
-        fd.append("chunk_index", String(i));
-        fd.append("total_chunks", String(totalChunks));
-        fd.append("filename", file.name);
-        fd.append("chunk", blob, file.name);
-        await axios.post(`${API}/architects/inspections/upload-chunk`, fd, {
-          withCredentials: true,
-          headers: { "Content-Type": "multipart/form-data" },
-          onUploadProgress: (evt) => {
-            const overall = ((i + (evt.loaded / (evt.total || 1))) / totalChunks) * 90;
-            setUploadProgress(Math.round(overall));
-          },
-        });
-      }
+      // Step 1 — get a presigned S3 URL from the backend
+      const { data: presign } = await axios.post(
+        `${API}/architects/inspections/presign`,
+        { filename: file.name },
+        { withCredentials: true }
+      );
 
+      // Step 2 — PUT the video directly to S3 (bypasses Vercel entirely)
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", presign.upload_url);
+        xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+        xhr.upload.onprogress = (evt) => {
+          if (evt.lengthComputable)
+            setUploadProgress(Math.round((evt.loaded / evt.total) * 90));
+        };
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`S3 upload failed: ${xhr.status}`)));
+        xhr.onerror = () => reject(new Error("S3 upload network error"));
+        xhr.send(file);
+      });
+
+      // Step 3 — tell the backend to finalize (extract keyframes + start analysis)
       setUploadProgress(92);
       const { data } = await axios.post(
-        `${API}/architects/inspections/upload-complete`,
+        `${API}/architects/inspections/finalize`,
         {
-          upload_id: uploadId,
+          inspection_id: presign.inspection_id,
+          s3_key: presign.s3_key,
           project_id: uploadForm.project_id,
           title: uploadForm.title,
           inspection_type: uploadForm.inspection_type,
@@ -175,7 +175,7 @@ const ArchitectsDashboard = () => {
       navigate(`/architects/inspection/${data.inspection_id}`);
       fetchAll();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Upload failed");
+      toast.error(err?.message || err.response?.data?.detail || "Upload failed");
     } finally {
       setUploading(false);
       setUploadProgress(0);
