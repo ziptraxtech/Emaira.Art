@@ -7,6 +7,7 @@ import os
 import re
 import json
 import uuid
+import shutil
 import asyncio
 from pathlib import Path
 from datetime import datetime, timezone
@@ -152,8 +153,10 @@ architects_router = APIRouter(prefix="/architects", tags=["Emaira Architects"])
 # Persistent folders for video + keyframe storage
 ARCHITECTS_VIDEO_DIR = Path(__file__).parent / "cache" / "architects" / "videos"
 ARCHITECTS_KEYFRAME_DIR = Path(__file__).parent / "cache" / "architects" / "keyframes"
+ARCHITECTS_CHUNK_DIR = Path(__file__).parent / "cache" / "architects" / "chunks"
 ARCHITECTS_VIDEO_DIR.mkdir(parents=True, exist_ok=True)
 ARCHITECTS_KEYFRAME_DIR.mkdir(parents=True, exist_ok=True)
+ARCHITECTS_CHUNK_DIR.mkdir(parents=True, exist_ok=True)
 
 ARCHITECTS_MAX_VIDEO_MB = 500
 ARCHITECTS_VALID_INSPECTION_TYPES = {"defect_detection", "safety_monitoring", "design_validation"}
@@ -267,6 +270,123 @@ def _extract_keyframes(video_path: Path, out_dir: Path, inspection_id: str, max_
             saved += 1
     cap.release()
     return {"duration_sec": duration, "width": width, "height": height, "keyframe_count": saved}
+
+
+@architects_router.post("/inspections/upload-chunk")
+async def upload_inspection_chunk(
+    request: Request,
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    filename: str = Form(...),
+    chunk: UploadFile = File(...),
+):
+    """Accept one chunk of a multi-part video upload."""
+    user = await rt.require_auth(request)
+    chunk_dir = ARCHITECTS_CHUNK_DIR / upload_id
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    chunk_path = chunk_dir / f"{chunk_index:05d}"
+    content = await chunk.read()
+    with open(chunk_path, "wb") as f:
+        f.write(content)
+    if chunk_index == 0:
+        with open(chunk_dir / "meta.json", "w") as f:
+            json.dump({"filename": filename, "total_chunks": total_chunks, "user_id": user.user_id}, f)
+    return {"status": "ok", "chunk": chunk_index}
+
+
+@architects_router.post("/inspections/upload-complete")
+async def complete_inspection_upload(request: Request):
+    """Assemble chunks uploaded via upload-chunk and create the inspection."""
+    user = await rt.require_auth(request)
+    body = await request.json()
+    upload_id = (body.get("upload_id") or "").strip()
+    project_id = (body.get("project_id") or "").strip()
+    title = (body.get("title") or "").strip()
+    inspection_type = body.get("inspection_type", "defect_detection")
+    notes = body.get("notes") or None
+
+    if not upload_id or not project_id or not title:
+        raise HTTPException(status_code=400, detail="upload_id, project_id and title are required")
+    if inspection_type not in ARCHITECTS_VALID_INSPECTION_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid inspection_type")
+
+    chunk_dir = ARCHITECTS_CHUNK_DIR / upload_id
+    meta_path = chunk_dir / "meta.json"
+    if not chunk_dir.exists() or not meta_path.exists():
+        raise HTTPException(status_code=404, detail="Upload session not found")
+    with open(meta_path) as f:
+        meta = json.load(f)
+    if meta["user_id"] != user.user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    total_chunks = meta["total_chunks"]
+    for i in range(total_chunks):
+        if not (chunk_dir / f"{i:05d}").exists():
+            raise HTTPException(status_code=400, detail=f"Missing chunk {i}")
+
+    project = await rt.db.architects_projects.find_one(
+        {"project_id": project_id, "user_id": user.user_id}, {"_id": 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    count = await rt.db.architects_inspections.count_documents(
+        {"user_id": user.user_id, "created_at": {"$gte": month_start.isoformat()}}
+    )
+    _arch_enforce_quota(user, count)
+
+    filename = meta["filename"]
+    inspection_id = f"insp_{uuid.uuid4().hex[:10]}"
+    suffix = Path(filename).suffix.lower() or ".mp4"
+    if suffix not in (".mp4", ".mov", ".m4v", ".webm"):
+        raise HTTPException(status_code=400, detail="Unsupported video format")
+    video_path = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{suffix}"
+    size = 0
+    with open(video_path, "wb") as out:
+        for i in range(total_chunks):
+            chunk_data = (chunk_dir / f"{i:05d}").read_bytes()
+            size += len(chunk_data)
+            if size > ARCHITECTS_MAX_VIDEO_MB * 1024 * 1024:
+                video_path.unlink(missing_ok=True)
+                shutil.rmtree(chunk_dir, ignore_errors=True)
+                raise HTTPException(status_code=413, detail=f"Video exceeds {ARCHITECTS_MAX_VIDEO_MB}MB limit")
+            out.write(chunk_data)
+    shutil.rmtree(chunk_dir, ignore_errors=True)
+
+    probe = await asyncio.to_thread(_extract_keyframes, video_path, ARCHITECTS_KEYFRAME_DIR, inspection_id)
+    inspection = ArchitectsInspection(
+        inspection_id=inspection_id,
+        user_id=user.user_id,
+        project_id=project_id,
+        title=title,
+        inspection_type=inspection_type,
+        video_filename=filename,
+        video_size_bytes=size,
+        video_duration_sec=probe["duration_sec"],
+        frame_width=probe["width"],
+        frame_height=probe["height"],
+        keyframe_count=probe["keyframe_count"],
+        notes=notes,
+        status="uploaded",
+    )
+    doc = inspection.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await rt.db.architects_inspections.insert_one(doc)
+    await rt.log_activity(user.user_id, "architects_inspection_upload", {
+        "inspection_id": inspection_id, "size_mb": round(size / 1_048_576, 2)
+    })
+    await rt.db.architects_inspections.update_one(
+        {"inspection_id": inspection_id},
+        {"$set": {
+            "status": "analyzing",
+            "analysis_started_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    asyncio.create_task(_run_architects_analysis(inspection_id, user.user_id))
+    doc.pop("_id", None)
+    doc["status"] = "analyzing"
+    return {"inspection_id": inspection_id, "status": "analyzing"}
 
 
 @architects_router.post("/inspections/upload")

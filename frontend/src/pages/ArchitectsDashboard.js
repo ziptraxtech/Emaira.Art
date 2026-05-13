@@ -122,6 +122,8 @@ const ArchitectsDashboard = () => {
     setUploadForm((s) => ({ ...s, file: f, title: s.title || f.name.replace(/\.[^.]+$/, "") }));
   };
 
+  const CHUNK_SIZE = 3 * 1024 * 1024; // 3 MB — stays under Vercel's 4.5 MB function body limit
+
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!uploadForm.file || !uploadForm.project_id || !uploadForm.title) {
@@ -131,27 +133,45 @@ const ArchitectsDashboard = () => {
     setUploading(true);
     setUploadProgress(0);
     try {
-      const fd = new FormData();
-      fd.append("project_id", uploadForm.project_id);
-      fd.append("title", uploadForm.title);
-      fd.append("inspection_type", uploadForm.inspection_type);
-      if (uploadForm.notes) fd.append("notes", uploadForm.notes);
-      fd.append("video", uploadForm.file);
-      if (uploadForm.inspection_type === "design_validation" && uploadForm.design_reference) {
-        fd.append("design_reference", uploadForm.design_reference);
+      const file = uploadForm.file;
+      const uploadId = crypto.randomUUID();
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const blob = file.slice(start, Math.min(start + CHUNK_SIZE, file.size));
+        const fd = new FormData();
+        fd.append("upload_id", uploadId);
+        fd.append("chunk_index", String(i));
+        fd.append("total_chunks", String(totalChunks));
+        fd.append("filename", file.name);
+        fd.append("chunk", blob, file.name);
+        await axios.post(`${API}/architects/inspections/upload-chunk`, fd, {
+          withCredentials: true,
+          headers: { "Content-Type": "multipart/form-data" },
+          onUploadProgress: (evt) => {
+            const overall = ((i + (evt.loaded / (evt.total || 1))) / totalChunks) * 90;
+            setUploadProgress(Math.round(overall));
+          },
+        });
       }
-      const { data } = await axios.post(`${API}/architects/inspections/upload`, fd, {
-        withCredentials: true,
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (evt) => {
-          if (evt.total) setUploadProgress(Math.round((evt.loaded / evt.total) * 100));
+
+      setUploadProgress(92);
+      const { data } = await axios.post(
+        `${API}/architects/inspections/upload-complete`,
+        {
+          upload_id: uploadId,
+          project_id: uploadForm.project_id,
+          title: uploadForm.title,
+          inspection_type: uploadForm.inspection_type,
+          notes: uploadForm.notes || undefined,
         },
-      });
+        { withCredentials: true }
+      );
+      setUploadProgress(100);
       toast.success("Video uploaded — analysis running in background");
       setUploadDialogOpen(false);
       setUploadForm({ project_id: "", title: "", inspection_type: "defect_detection", notes: "", file: null, design_reference: null });
-      // Background analyze auto-starts on upload — just navigate to the detail page,
-      // which polls until status=completed.
       navigate(`/architects/inspection/${data.inspection_id}`);
       fetchAll();
     } catch (err) {
