@@ -1,6 +1,6 @@
 const ALB = 'http://defect-alb-1564603409.ap-south-1.elb.amazonaws.com:8080';
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   const target = ALB + req.url;
 
   const headers = { 'content-type': 'application/json' };
@@ -19,4 +19,4 @@ export default async function handler(req, res) {
   } catch (e) {
     res.status(502).json({ detail: 'Proxy error', error: e.message });
   }
-}
+};
