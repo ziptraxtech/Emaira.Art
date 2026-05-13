@@ -291,7 +291,7 @@ async def presign_inspection_upload(request: Request):
     url = await asyncio.to_thread(
         _s3.generate_presigned_url,
         "put_object",
-        Params={"Bucket": S3_BUCKET, "Key": s3_key, "ContentType": "video/*"},
+        Params={"Bucket": S3_BUCKET, "Key": s3_key},
         ExpiresIn=3600,
     )
     return {"upload_url": url, "inspection_id": inspection_id, "s3_key": s3_key}

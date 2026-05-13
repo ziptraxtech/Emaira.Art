@@ -144,7 +144,6 @@ const ArchitectsDashboard = () => {
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("PUT", presign.upload_url);
-        xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
         xhr.upload.onprogress = (evt) => {
           if (evt.lengthComputable)
             setUploadProgress(Math.round((evt.loaded / evt.total) * 90));
