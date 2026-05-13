@@ -46,6 +46,20 @@ import ArchitectsSharedReport from "@/pages/ArchitectsSharedReport";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 export const API = `${BACKEND_URL}/api`;
 
+// Module-level ref to current Clerk getToken (set by AuthProvider when Clerk loads)
+const getTokenRef = { current: null };
+
+// Install axios interceptor ONCE at module load so it runs before any child useEffect fires
+axios.interceptors.request.use(async (config) => {
+  if (getTokenRef.current) {
+    try {
+      const token = await getTokenRef.current();
+      if (token) config.headers.Authorization = `Bearer ${token}`;
+    } catch {}
+  }
+  return config;
+});
+
 // Auth Context
 const AuthContext = createContext(null);
 
@@ -72,16 +86,8 @@ export const AuthProvider = ({ children }) => {
       }
     : null;
 
-  // Attach Clerk JWT to every axios request
-  useEffect(() => {
-    if (!clerkUser) return;
-    const interceptor = axios.interceptors.request.use(async (config) => {
-      const token = await getToken();
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-      return config;
-    });
-    return () => axios.interceptors.request.eject(interceptor);
-  }, [clerkUser, getToken]);
+  // Keep module-level getTokenRef pointed at current Clerk getToken
+  getTokenRef.current = clerkUser ? getToken : null;
 
   // Register user in backend on first Clerk login
   useEffect(() => {
