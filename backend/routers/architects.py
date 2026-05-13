@@ -378,12 +378,20 @@ async def finalize_inspection_upload(request: Request):
         # Image inspection: copy image into keyframes dir so analysis can use it
         img_path = ARCHITECTS_KEYFRAME_DIR / f"{inspection_id}_f0{suffix}"
         await asyncio.to_thread(_s3.download_file, S3_BUCKET, s3_key, str(img_path))
+        kf_s3_key = f"keyframes/{user.user_id}/{inspection_id}_f0{suffix}"
+        await asyncio.to_thread(_s3.upload_file, str(img_path), S3_BUCKET, kf_s3_key)
         probe = {"duration_sec": None, "width": None, "height": None, "keyframe_count": 1}
     else:
         # Video inspection: download and extract keyframes
         video_path = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{suffix}"
         await asyncio.to_thread(_s3.download_file, S3_BUCKET, s3_key, str(video_path))
         probe = await asyncio.to_thread(_extract_keyframes, video_path, ARCHITECTS_KEYFRAME_DIR, inspection_id)
+        # Upload keyframes to S3 so they survive container restarts
+        for idx in range(probe["keyframe_count"]):
+            kf_local = ARCHITECTS_KEYFRAME_DIR / f"{inspection_id}_f{idx}.jpg"
+            if kf_local.exists():
+                kf_s3_key = f"keyframes/{user.user_id}/{inspection_id}_f{idx}.jpg"
+                await asyncio.to_thread(_s3.upload_file, str(kf_local), S3_BUCKET, kf_s3_key)
 
     # Optional design reference image
     design_ref_id = None
@@ -413,6 +421,7 @@ async def finalize_inspection_upload(request: Request):
     )
     doc = inspection.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
+    doc["s3_key"] = s3_key
     await rt.db.architects_inspections.insert_one(doc)
     await rt.log_activity(user.user_id, "architects_inspection_upload", {
         "inspection_id": inspection_id, "size_mb": round(size / 1_048_576, 2)
@@ -479,7 +488,20 @@ async def stream_architects_video(inspection_id: str, request: Request):
                 ".m4v": "video/mp4", ".webm": "video/webm",
             }[ext]
             return FileResponse(p, media_type=mime)
-    raise HTTPException(status_code=404, detail="Video file missing on disk")
+    # Cache miss — download from S3 using stored s3_key
+    stored_key = insp.get("s3_key") or (
+        f"videos/{user.user_id}/{insp['video_filename']}" if insp.get("video_filename") else None
+    )
+    if not stored_key:
+        raise HTTPException(status_code=404, detail="Video file missing")
+    ext = Path(stored_key).suffix.lower() or ".mp4"
+    local_path = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
+    try:
+        await asyncio.to_thread(_s3.download_file, S3_BUCKET, stored_key, str(local_path))
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Video not found in S3: {e}")
+    mime = {".mp4": "video/mp4", ".mov": "video/quicktime", ".m4v": "video/mp4", ".webm": "video/webm"}.get(ext, "video/mp4")
+    return FileResponse(local_path, media_type=mime)
 
 
 @architects_router.get("/inspections/{inspection_id}/keyframe/{idx}")
@@ -494,7 +516,12 @@ async def get_architects_keyframe(inspection_id: str, idx: int, request: Request
         raise HTTPException(status_code=404, detail="Keyframe not found")
     p = ARCHITECTS_KEYFRAME_DIR / f"{inspection_id}_f{idx}.jpg"
     if not p.exists():
-        raise HTTPException(status_code=404, detail="Keyframe not on disk")
+        # Try downloading from S3
+        kf_s3_key = f"keyframes/{user.user_id}/{inspection_id}_f{idx}.jpg"
+        try:
+            await asyncio.to_thread(_s3.download_file, S3_BUCKET, kf_s3_key, str(p))
+        except Exception:
+            raise HTTPException(status_code=404, detail="Keyframe not found in S3")
     return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
 
 
@@ -1103,7 +1130,21 @@ async def stream_architects_shared_video(token: str):
                 ".m4v": "video/mp4", ".webm": "video/webm",
             }[ext]
             return FileResponse(p, media_type=mime)
-    raise HTTPException(status_code=404, detail="Video missing")
+    # Cache miss — fetch s3_key from inspection doc and download
+    insp = await rt.db.architects_inspections.find_one({"inspection_id": inspection_id}, {"_id": 0})
+    stored_key = (insp or {}).get("s3_key") or (
+        f"videos/{insp['user_id']}/{insp['video_filename']}" if insp and insp.get("video_filename") else None
+    )
+    if not stored_key:
+        raise HTTPException(status_code=404, detail="Video missing")
+    ext = Path(stored_key).suffix.lower() or ".mp4"
+    local_path = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
+    try:
+        await asyncio.to_thread(_s3.download_file, S3_BUCKET, stored_key, str(local_path))
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Video not found in S3: {e}")
+    mime = {".mp4": "video/mp4", ".mov": "video/quicktime", ".m4v": "video/mp4", ".webm": "video/webm"}.get(ext, "video/mp4")
+    return FileResponse(local_path, media_type=mime)
 
 
 @architects_router.get("/share/{token}/keyframe/{idx}")
@@ -1111,9 +1152,18 @@ async def get_architects_shared_keyframe(token: str, idx: int):
     link = await rt.db.architects_share_links.find_one({"token": token}, {"_id": 0})
     if not link:
         raise HTTPException(status_code=404, detail="Share link not found")
-    p = ARCHITECTS_KEYFRAME_DIR / f"{link['inspection_id']}_f{idx}.jpg"
+    inspection_id = link["inspection_id"]
+    p = ARCHITECTS_KEYFRAME_DIR / f"{inspection_id}_f{idx}.jpg"
     if not p.exists():
-        raise HTTPException(status_code=404, detail="Keyframe not found")
+        # Fetch user_id from inspection to build S3 key
+        insp = await rt.db.architects_inspections.find_one({"inspection_id": inspection_id}, {"_id": 0, "user_id": 1})
+        if not insp:
+            raise HTTPException(status_code=404, detail="Keyframe not found")
+        kf_s3_key = f"keyframes/{insp['user_id']}/{inspection_id}_f{idx}.jpg"
+        try:
+            await asyncio.to_thread(_s3.download_file, S3_BUCKET, kf_s3_key, str(p))
+        except Exception:
+            raise HTTPException(status_code=404, detail="Keyframe not found in S3")
     return FileResponse(p, media_type="image/jpeg",
                         headers={"Cache-Control": "public, max-age=86400"})
 
