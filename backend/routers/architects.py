@@ -158,7 +158,12 @@ ARCHITECTS_KEYFRAME_DIR.mkdir(parents=True, exist_ok=True)
 S3_BUCKET = os.getenv("S3_BUCKET", "emaira-inspection-videos")
 
 import boto3  # noqa: E402
-_s3 = boto3.client("s3", region_name=os.getenv("AWS_DEFAULT_REGION", "ap-south-1"))
+_s3_region = os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
+_s3 = boto3.client(
+    "s3",
+    region_name=_s3_region,
+    endpoint_url=f"https://s3.{_s3_region}.amazonaws.com",
+)
 
 ARCHITECTS_MAX_VIDEO_MB = 500
 ARCHITECTS_VALID_INSPECTION_TYPES = {"defect_detection", "safety_monitoring", "design_validation"}
