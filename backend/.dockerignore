@@ -1,0 +1,11 @@
+.env
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+tests/
+routers/cache/
+venv/
+.venv/
+*.md
+=2.0.0
