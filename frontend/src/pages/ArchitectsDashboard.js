@@ -127,12 +127,7 @@ const ArchitectsDashboard = () => {
   const s3Put = (url, file, onProgress) =>
     new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      // Force regional endpoint — global s3.amazonaws.com doesn't serve CORS for ap-south-1 buckets
-      const regionalUrl = url.replace(
-        /\.s3\.amazonaws\.com\//,
-        ".s3.ap-south-1.amazonaws.com/"
-      );
-      xhr.open("PUT", regionalUrl);
+      xhr.open("PUT", url);
       xhr.upload.onprogress = (evt) => {
         if (evt.lengthComputable && onProgress) onProgress(evt.loaded / evt.total);
       };
