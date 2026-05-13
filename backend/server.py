@@ -55,7 +55,10 @@ async def verify_clerk_jwt(token: str) -> Optional[dict]:
         key = next((k for k in jwks.get("keys", []) if k.get("kid") == header.get("kid")), None)
         if not key:
             return None
-        return jose_jwt.decode(token, key, algorithms=["RS256"])
+        return jose_jwt.decode(
+            token, key, algorithms=["RS256"],
+            options={"verify_aud": False, "verify_at_hash": False},
+        )
     except Exception:
         return None
 
