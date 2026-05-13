@@ -89,7 +89,16 @@ export const AuthProvider = ({ children }) => {
     sessionCreated.current = true;
     (async () => {
       try {
-        const token = await getToken();
+        let token = null;
+        for (let i = 0; i < 5; i++) {
+          token = await getToken();
+          if (token) break;
+          await new Promise(r => setTimeout(r, 600));
+        }
+        if (!token) {
+          sessionCreated.current = false;
+          return;
+        }
         await axios.post(
           `${API}/auth/session`,
           {
