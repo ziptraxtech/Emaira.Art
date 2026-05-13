@@ -112,49 +112,66 @@ const ArchitectsDashboard = () => {
     }
   };
 
+  const ACCEPTED_MEDIA = "video/mp4,video/quicktime,video/x-m4v,video/webm,image/jpeg,image/png,image/webp";
+
   const handleFileSelect = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 500 * 1024 * 1024) {
-      toast.error("Video must be under 500 MB");
+      toast.error("File must be under 500 MB");
       return;
     }
     setUploadForm((s) => ({ ...s, file: f, title: s.title || f.name.replace(/\.[^.]+$/, "") }));
   };
 
+  const s3Put = (url, file, onProgress) =>
+    new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url);
+      xhr.upload.onprogress = (evt) => {
+        if (evt.lengthComputable && onProgress) onProgress(evt.loaded / evt.total);
+      };
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`S3 upload failed: ${xhr.status}`)));
+      xhr.onerror = () => reject(new Error("S3 upload network error"));
+      xhr.send(file);
+    });
+
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!uploadForm.file || !uploadForm.project_id || !uploadForm.title) {
-      toast.error("Project, title and video are required");
+      toast.error("Project, title and file are required");
       return;
     }
     setUploading(true);
     setUploadProgress(0);
     try {
       const file = uploadForm.file;
+      const ref = uploadForm.design_reference;
 
-      // Step 1 — get a presigned S3 URL from the backend
+      // Step 1 — get presigned URL(s) from backend
       const { data: presign } = await axios.post(
         `${API}/architects/inspections/presign`,
-        { filename: file.name },
+        { filename: file.name, ...(ref ? { ref_filename: ref.name } : {}) },
         { withCredentials: true }
       );
 
-      // Step 2 — PUT the video directly to S3 (bypasses Vercel entirely)
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", presign.upload_url);
-        xhr.upload.onprogress = (evt) => {
-          if (evt.lengthComputable)
-            setUploadProgress(Math.round((evt.loaded / evt.total) * 90));
-        };
-        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`S3 upload failed: ${xhr.status}`)));
-        xhr.onerror = () => reject(new Error("S3 upload network error"));
-        xhr.send(file);
-      });
+      // Step 2 — upload primary file to S3
+      const refWeight = ref ? 0.15 : 0;
+      await s3Put(presign.upload_url, file, (p) =>
+        setUploadProgress(Math.round(p * (85 - refWeight * 85)))
+      );
 
-      // Step 3 — tell the backend to finalize (extract keyframes + start analysis)
-      setUploadProgress(92);
+      // Step 2b — upload design reference if present
+      let ref_s3_key;
+      if (ref && presign.ref_upload_url) {
+        await s3Put(presign.ref_upload_url, ref, (p) =>
+          setUploadProgress(Math.round(85 - refWeight * 85 + p * refWeight * 85))
+        );
+        ref_s3_key = presign.ref_s3_key;
+      }
+
+      // Step 3 — finalize
+      setUploadProgress(90);
       const { data } = await axios.post(
         `${API}/architects/inspections/finalize`,
         {
@@ -164,11 +181,13 @@ const ArchitectsDashboard = () => {
           title: uploadForm.title,
           inspection_type: uploadForm.inspection_type,
           notes: uploadForm.notes || undefined,
+          ...(ref_s3_key ? { ref_s3_key } : {}),
         },
         { withCredentials: true }
       );
       setUploadProgress(100);
-      toast.success("Video uploaded — analysis running in background");
+      const isImg = presign.is_image;
+      toast.success(`${isImg ? "Image" : "Video"} uploaded — analysis running in background`);
       setUploadDialogOpen(false);
       setUploadForm({ project_id: "", title: "", inspection_type: "defect_detection", notes: "", file: null, design_reference: null });
       navigate(`/architects/inspection/${data.inspection_id}`);

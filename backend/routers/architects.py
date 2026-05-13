@@ -276,17 +276,22 @@ def _extract_keyframes(video_path: Path, out_dir: Path, inspection_id: str, max_
 
 @architects_router.post("/inspections/presign")
 async def presign_inspection_upload(request: Request):
-    """Return a presigned S3 PUT URL so the browser can upload directly.
-    Also reserves the inspection_id so the frontend can reference it in /finalize."""
+    """Return presigned S3 PUT URL(s) for a video or image inspection.
+    Optionally also presigns a design_reference image upload."""
     user = await rt.require_auth(request)
     body = await request.json()
     filename = (body.get("filename") or "video.mp4").strip()
     suffix = Path(filename).suffix.lower() or ".mp4"
-    if suffix not in (".mp4", ".mov", ".m4v", ".webm"):
-        raise HTTPException(status_code=400, detail="Unsupported video format")
 
+    VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}
+    IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+    if suffix not in VIDEO_EXTS | IMAGE_EXTS:
+        raise HTTPException(status_code=400, detail="Unsupported file format")
+
+    is_image = suffix in IMAGE_EXTS
     inspection_id = f"insp_{uuid.uuid4().hex[:10]}"
-    s3_key = f"videos/{user.user_id}/{inspection_id}{suffix}"
+    folder = "images" if is_image else "videos"
+    s3_key = f"{folder}/{user.user_id}/{inspection_id}{suffix}"
 
     url = await asyncio.to_thread(
         _s3.generate_presigned_url,
@@ -294,7 +299,25 @@ async def presign_inspection_upload(request: Request):
         Params={"Bucket": S3_BUCKET, "Key": s3_key},
         ExpiresIn=3600,
     )
-    return {"upload_url": url, "inspection_id": inspection_id, "s3_key": s3_key}
+    result = {"upload_url": url, "inspection_id": inspection_id, "s3_key": s3_key, "is_image": is_image}
+
+    # Optionally presign a design_reference image
+    ref_filename = (body.get("ref_filename") or "").strip()
+    if ref_filename:
+        ref_suffix = Path(ref_filename).suffix.lower() or ".jpg"
+        if ref_suffix not in IMAGE_EXTS:
+            raise HTTPException(status_code=400, detail="Design reference must be JPG/PNG/WebP")
+        ref_key = f"design-refs/{user.user_id}/{inspection_id}{ref_suffix}"
+        ref_url = await asyncio.to_thread(
+            _s3.generate_presigned_url,
+            "put_object",
+            Params={"Bucket": S3_BUCKET, "Key": ref_key},
+            ExpiresIn=3600,
+        )
+        result["ref_upload_url"] = ref_url
+        result["ref_s3_key"] = ref_key
+
+    return result
 
 
 @architects_router.post("/inspections/finalize")
@@ -310,11 +333,18 @@ async def finalize_inspection_upload(request: Request):
     inspection_type = body.get("inspection_type", "defect_detection")
     notes = body.get("notes") or None
 
+    ref_s3_key = body.get("ref_s3_key") or None
+
     if not inspection_id or not s3_key or not project_id or not title:
         raise HTTPException(status_code=400, detail="inspection_id, s3_key, project_id and title are required")
     if inspection_type not in ARCHITECTS_VALID_INSPECTION_TYPES:
         raise HTTPException(status_code=400, detail="Invalid inspection_type")
-    if not s3_key.startswith(f"videos/{user.user_id}/"):
+
+    IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+    suffix = Path(s3_key).suffix.lower()
+    is_image = suffix in IMAGE_EXTS
+    allowed_prefix = ("images" if is_image else "videos") + f"/{user.user_id}/"
+    if not s3_key.startswith(allowed_prefix):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     project = await rt.db.architects_projects.find_one(
@@ -328,21 +358,35 @@ async def finalize_inspection_upload(request: Request):
     )
     _arch_enforce_quota(user, count)
 
-    # Verify the object exists in S3
+    # Verify the primary file exists in S3
     try:
         head = await asyncio.to_thread(_s3.head_object, Bucket=S3_BUCKET, Key=s3_key)
     except Exception:
-        raise HTTPException(status_code=400, detail="Video not found in S3 — upload may have failed")
+        raise HTTPException(status_code=400, detail="File not found in S3 — upload may have failed")
     size = head["ContentLength"]
     if size > 500 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Video exceeds 500 MB limit")
+        raise HTTPException(status_code=413, detail="File exceeds 500 MB limit")
 
-    # Download to local temp for keyframe extraction
-    suffix = Path(s3_key).suffix.lower() or ".mp4"
-    video_path = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{suffix}"
-    await asyncio.to_thread(_s3.download_file, S3_BUCKET, s3_key, str(video_path))
-    probe = await asyncio.to_thread(_extract_keyframes, video_path, ARCHITECTS_KEYFRAME_DIR, inspection_id)
-    # Keep local copy for analysis; cleaned up after analysis completes
+    if is_image:
+        # Image inspection: copy image into keyframes dir so analysis can use it
+        img_path = ARCHITECTS_KEYFRAME_DIR / f"{inspection_id}_f0{suffix}"
+        await asyncio.to_thread(_s3.download_file, S3_BUCKET, s3_key, str(img_path))
+        probe = {"duration_sec": None, "width": None, "height": None, "keyframe_count": 1}
+    else:
+        # Video inspection: download and extract keyframes
+        video_path = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{suffix}"
+        await asyncio.to_thread(_s3.download_file, S3_BUCKET, s3_key, str(video_path))
+        probe = await asyncio.to_thread(_extract_keyframes, video_path, ARCHITECTS_KEYFRAME_DIR, inspection_id)
+
+    # Optional design reference image
+    design_ref_id = None
+    if ref_s3_key and ref_s3_key.startswith(f"design-refs/{user.user_id}/"):
+        ref_suffix = Path(ref_s3_key).suffix.lower() or ".jpg"
+        design_ref_id = f"{inspection_id}_design{ref_suffix}"
+        await asyncio.to_thread(
+            _s3.download_file, S3_BUCKET, ref_s3_key,
+            str(ARCHITECTS_KEYFRAME_DIR / design_ref_id)
+        )
 
     inspection = ArchitectsInspection(
         inspection_id=inspection_id,
@@ -356,6 +400,7 @@ async def finalize_inspection_upload(request: Request):
         frame_width=probe["width"],
         frame_height=probe["height"],
         keyframe_count=probe["keyframe_count"],
+        design_reference_image_id=design_ref_id,
         notes=notes,
         status="uploaded",
     )
