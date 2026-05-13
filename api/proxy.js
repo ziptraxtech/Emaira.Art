@@ -1,7 +1,11 @@
 const ALB = 'http://defect-alb-1564603409.ap-south-1.elb.amazonaws.com:8080';
 
 module.exports = async function handler(req, res) {
-  const target = ALB + req.url;
+  const url = new URL(req.url, 'http://x');
+  const path = url.searchParams.get('_path') || '';
+  url.searchParams.delete('_path');
+  const qs = url.searchParams.toString();
+  const target = `${ALB}/api/${path}${qs ? '?' + qs : ''}`;
 
   const headers = { 'content-type': 'application/json' };
   if (req.headers['authorization']) headers['authorization'] = req.headers['authorization'];
@@ -17,6 +21,6 @@ module.exports = async function handler(req, res) {
     res.status(upstream.status);
     try { res.json(JSON.parse(text)); } catch { res.send(text); }
   } catch (e) {
-    res.status(502).json({ detail: 'Proxy error', error: e.message });
+    res.status(502).json({ detail: 'Proxy error', error: e.message, target });
   }
 };
