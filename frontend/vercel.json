@@ -1,8 +1,5 @@
 {
   "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "http://defect-alb-1564603409.ap-south-1.elb.amazonaws.com:8080/api/:path*"
-    }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
