@@ -21,7 +21,7 @@ from fastapi import (
     File,
     Form,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 import httpx
@@ -482,32 +482,19 @@ async def stream_architects_video(inspection_id: str, request: Request):
     )
     if not insp:
         raise HTTPException(status_code=404, detail="Inspection not found")
-    # Prefer YOLO-segmented video; fall back to original
-    seg = ARCHITECTS_VIDEO_DIR / f"{inspection_id}_segmented.mp4"
-    if seg.exists():
-        return FileResponse(seg, media_type="video/mp4")
-    for ext in (".mp4", ".mov", ".m4v", ".webm"):
-        p = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
-        if p.exists():
-            mime = {
-                ".mp4": "video/mp4", ".mov": "video/quicktime",
-                ".m4v": "video/mp4", ".webm": "video/webm",
-            }[ext]
-            return FileResponse(p, media_type=mime)
-    # Cache miss — download from S3 using stored s3_key
-    stored_key = insp.get("s3_key") or (
+    # Prefer segmented S3 key, fall back to original S3 key
+    s3_key = insp.get("segmented_s3_key") or insp.get("s3_key") or (
         f"videos/{user.user_id}/{insp['video_filename']}" if insp.get("video_filename") else None
     )
-    if not stored_key:
-        raise HTTPException(status_code=404, detail="Video file missing")
-    ext = Path(stored_key).suffix.lower() or ".mp4"
-    local_path = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
-    try:
-        await asyncio.to_thread(_s3.download_file, S3_BUCKET, stored_key, str(local_path))
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Video not found in S3: {e}")
-    mime = {".mp4": "video/mp4", ".mov": "video/quicktime", ".m4v": "video/mp4", ".webm": "video/webm"}.get(ext, "video/mp4")
-    return FileResponse(local_path, media_type=mime)
+    if not s3_key:
+        raise HTTPException(status_code=404, detail="Video not found")
+    presigned = await asyncio.to_thread(
+        _s3.generate_presigned_url,
+        "get_object",
+        Params={"Bucket": S3_BUCKET, "Key": s3_key},
+        ExpiresIn=3600,
+    )
+    return RedirectResponse(url=presigned, status_code=302)
 
 
 @architects_router.get("/inspections/{inspection_id}/keyframe/{idx}")
@@ -664,11 +651,20 @@ async def _run_architects_analysis(inspection_id: str, user_id: str):
 
     # Run YOLO segmentation; fall back to original on failure
     seg_path, seg_frames, seg_detections = await _call_segmentation(video_path, inspection_id)
+    seg_s3_key = None
     if seg_path:
+        # Upload segmented video to S3 so it survives container restarts
+        seg_s3_key = f"segmented/{user_id}/{inspection_id}_segmented.mp4"
+        try:
+            await asyncio.to_thread(_s3.upload_file, str(seg_path), S3_BUCKET, seg_s3_key)
+        except Exception as exc:
+            rt.logger.warning("Segmented video S3 upload failed: %s", exc)
+            seg_s3_key = None
         await rt.db.architects_inspections.update_one(
             {"inspection_id": inspection_id},
             {"$set": {
                 "segmented_video_filename": seg_path.name,
+                "segmented_s3_key": seg_s3_key,
                 "segmentation_frames": seg_frames,
                 "segmentation_detections": seg_detections,
             }},
@@ -1137,33 +1133,21 @@ async def stream_architects_shared_video(token: str):
     link = await rt.db.architects_share_links.find_one({"token": token}, {"_id": 0})
     if not link:
         raise HTTPException(status_code=404, detail="Share link not found")
-    inspection_id = link["inspection_id"]
-    seg = ARCHITECTS_VIDEO_DIR / f"{inspection_id}_segmented.mp4"
-    if seg.exists():
-        return FileResponse(seg, media_type="video/mp4")
-    for ext in (".mp4", ".mov", ".m4v", ".webm"):
-        p = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
-        if p.exists():
-            mime = {
-                ".mp4": "video/mp4", ".mov": "video/quicktime",
-                ".m4v": "video/mp4", ".webm": "video/webm",
-            }[ext]
-            return FileResponse(p, media_type=mime)
-    # Cache miss — fetch s3_key from inspection doc and download
-    insp = await rt.db.architects_inspections.find_one({"inspection_id": inspection_id}, {"_id": 0})
-    stored_key = (insp or {}).get("s3_key") or (
-        f"videos/{insp['user_id']}/{insp['video_filename']}" if insp and insp.get("video_filename") else None
+    insp = await rt.db.architects_inspections.find_one({"inspection_id": link["inspection_id"]}, {"_id": 0})
+    if not insp:
+        raise HTTPException(status_code=404, detail="Video not found")
+    s3_key = insp.get("segmented_s3_key") or insp.get("s3_key") or (
+        f"videos/{insp['user_id']}/{insp['video_filename']}" if insp.get("video_filename") else None
     )
-    if not stored_key:
-        raise HTTPException(status_code=404, detail="Video missing")
-    ext = Path(stored_key).suffix.lower() or ".mp4"
-    local_path = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
-    try:
-        await asyncio.to_thread(_s3.download_file, S3_BUCKET, stored_key, str(local_path))
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Video not found in S3: {e}")
-    mime = {".mp4": "video/mp4", ".mov": "video/quicktime", ".m4v": "video/mp4", ".webm": "video/webm"}.get(ext, "video/mp4")
-    return FileResponse(local_path, media_type=mime)
+    if not s3_key:
+        raise HTTPException(status_code=404, detail="Video not found")
+    presigned = await asyncio.to_thread(
+        _s3.generate_presigned_url,
+        "get_object",
+        Params={"Bucket": S3_BUCKET, "Key": s3_key},
+        ExpiresIn=3600,
+    )
+    return RedirectResponse(url=presigned, status_code=302)
 
 
 @architects_router.get("/share/{token}/keyframe/{idx}")
