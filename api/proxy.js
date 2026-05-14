@@ -23,10 +23,22 @@ module.exports = async function handler(req, res) {
     const upstream = await fetch(target, init);
     const setCookie = upstream.headers.getSetCookie ? upstream.headers.getSetCookie() : upstream.headers.raw?.()['set-cookie'];
     if (setCookie && setCookie.length) res.setHeader('set-cookie', setCookie);
-    const ct = upstream.headers.get('content-type');
+    const ct = upstream.headers.get('content-type') || '';
     if (ct) res.setHeader('content-type', ct);
-    const text = await upstream.text();
-    res.status(upstream.status).send(text);
+    const cl = upstream.headers.get('content-length');
+    if (cl) res.setHeader('content-length', cl);
+    const cr = upstream.headers.get('content-range');
+    if (cr) res.setHeader('content-range', cr);
+    const ar = upstream.headers.get('accept-ranges');
+    if (ar) res.setHeader('accept-ranges', ar);
+    const isBinary = /video|image|audio|octet-stream|pdf/.test(ct);
+    if (isBinary) {
+      const buf = await upstream.arrayBuffer();
+      res.status(upstream.status).send(Buffer.from(buf));
+    } else {
+      const text = await upstream.text();
+      res.status(upstream.status).send(text);
+    }
   } catch (e) {
     res.status(502).json({ detail: 'Proxy error', error: e.message, target });
   }
