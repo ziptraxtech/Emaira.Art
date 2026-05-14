@@ -379,7 +379,10 @@ async def finalize_inspection_upload(request: Request):
         img_path = ARCHITECTS_KEYFRAME_DIR / f"{inspection_id}_f0{suffix}"
         await asyncio.to_thread(_s3.download_file, S3_BUCKET, s3_key, str(img_path))
         kf_s3_key = f"keyframes/{user.user_id}/{inspection_id}_f0{suffix}"
-        await asyncio.to_thread(_s3.upload_file, str(img_path), S3_BUCKET, kf_s3_key)
+        try:
+            await asyncio.to_thread(_s3.upload_file, str(img_path), S3_BUCKET, kf_s3_key)
+        except Exception as exc:
+            rt.logger.warning("Image keyframe S3 upload failed: %s", exc)
         probe = {"duration_sec": None, "width": None, "height": None, "keyframe_count": 1}
     else:
         # Video inspection: download and extract keyframes
@@ -391,7 +394,10 @@ async def finalize_inspection_upload(request: Request):
             kf_local = ARCHITECTS_KEYFRAME_DIR / f"{inspection_id}_f{idx}.jpg"
             if kf_local.exists():
                 kf_s3_key = f"keyframes/{user.user_id}/{inspection_id}_f{idx}.jpg"
-                await asyncio.to_thread(_s3.upload_file, str(kf_local), S3_BUCKET, kf_s3_key)
+                try:
+                    await asyncio.to_thread(_s3.upload_file, str(kf_local), S3_BUCKET, kf_s3_key)
+                except Exception as exc:
+                    rt.logger.warning("Keyframe S3 upload failed (idx=%d): %s", idx, exc)
 
     # Optional design reference image
     design_ref_id = None
@@ -637,11 +643,24 @@ async def _run_architects_analysis(inspection_id: str, user_id: str):
             video_path = p
             break
     if not video_path:
-        await rt.db.architects_inspections.update_one(
-            {"inspection_id": inspection_id},
-            {"$set": {"status": "failed", "error_message": "Video file missing"}},
+        # Try to recover video from S3
+        stored_key = insp.get("s3_key") or (
+            f"videos/{user_id}/{insp['video_filename']}" if insp.get("video_filename") else None
         )
-        return
+        if stored_key:
+            ext = Path(stored_key).suffix.lower() or ".mp4"
+            recover_path = ARCHITECTS_VIDEO_DIR / f"{inspection_id}{ext}"
+            try:
+                await asyncio.to_thread(_s3.download_file, S3_BUCKET, stored_key, str(recover_path))
+                video_path = recover_path
+            except Exception as exc:
+                rt.logger.warning("Could not recover video from S3: %s", exc)
+        if not video_path:
+            await rt.db.architects_inspections.update_one(
+                {"inspection_id": inspection_id},
+                {"$set": {"status": "failed", "error_message": "Video file missing"}},
+            )
+            return
 
     # Run YOLO segmentation; fall back to original on failure
     seg_path, seg_frames, seg_detections = await _call_segmentation(video_path, inspection_id)
