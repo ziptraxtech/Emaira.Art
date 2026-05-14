@@ -176,11 +176,11 @@ def _arch_enforce_quota(user: rt.User, inspections_this_month: int) -> None:
     tier_id = user.subscription_tier or ""
     tier = ARCHITECTS_TIERS.get(tier_id)
     if not tier:
-        # Allow a generous free trial of 2 inspections for any logged-in user
-        if inspections_this_month >= 2:
+        # Allow a generous free trial of 20 inspections for any logged-in user
+        if inspections_this_month >= 20:
             raise HTTPException(
                 status_code=403,
-                detail="Free trial exhausted (2 inspections). Upgrade to Emaira Architects Starter or Pro.",
+                detail="Free trial exhausted (20 inspections). Upgrade to Emaira Architects Starter or Pro.",
             )
         return
     if tier.inspection_limit == -1:
