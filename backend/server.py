@@ -2,7 +2,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depend
 from fastapi.responses import JSONResponse, FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+import neon_db as _neon_module
 import os
 import logging
 import re
@@ -22,10 +22,9 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR.parent / '.env')
 load_dotenv(ROOT_DIR / '.env', override=False)
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# Neon (PostgreSQL) connection — pool created at startup
+_neon_pool = None
+db = None
 
 # Resend configuration
 resend.api_key = os.environ.get('RESEND_API_KEY')
@@ -5383,6 +5382,7 @@ api_router.include_router(restoration_router)
 
 # === Architects sub-router ===
 import _runtime
+# db is None at import time; startup_db() patches rt.db after pool is ready
 _runtime.init(db_handle=db, user_model=User, require_auth_fn=require_auth, log_activity_fn=log_activity, app_logger=logger)
 from routers.architects import architects_router, ARCHITECTS_TIERS  # noqa: E402
 api_router.include_router(architects_router)
@@ -5418,6 +5418,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def startup_db():
+    global _neon_pool, db
+    _neon_pool = await _neon_module.create_pool(os.environ["DATABASE_URL"])
+    db = await _neon_module.get_db(_neon_pool)
+    # Apply schema (idempotent — uses CREATE TABLE IF NOT EXISTS)
+    schema_path = Path(__file__).parent / "schema.sql"
+    schema_sql = schema_path.read_text()
+    async with _neon_pool.acquire() as conn:
+        await conn.execute(schema_sql)
+    # Re-wire the runtime singleton so routers see the new db
+    import _runtime as rt
+    rt.db = db
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    if _neon_pool:
+        await _neon_pool.close()
