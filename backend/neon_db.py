@@ -160,18 +160,35 @@ def _build_update(update_dict: Dict, param_offset: int = 0) -> Tuple[str, List]:
 
     for op, fields in update_dict.items():
         if op == "$set":
+            # Merge all flat fields into one JSONB object to avoid
+            # "multiple assignments to same column" PostgreSQL error.
+            flat: Dict[str, Any] = {}
+            nested_parts: List[str] = []
             for key, val in fields.items():
                 if "." in key:
-                    # nested path: e.g. "details.foo"
                     keys = key.split(".")
                     path = "{" + ",".join(keys) + "}"
                     idx = next_idx()
                     params.append(_dumps(val))
-                    parts.append(f"_doc = jsonb_set(_doc, '{path}', ${idx}::jsonb, true)")
+                    nested_parts.append(
+                        f"jsonb_set(_doc, '{path}', ${idx}::jsonb, true)"
+                    )
                 else:
-                    idx = next_idx()
-                    params.append(_dumps({key: val}))
-                    parts.append(f"_doc = _doc || ${idx}::jsonb")
+                    flat[key] = val
+            # Apply flat fields as a single merge
+            if flat:
+                idx = next_idx()
+                params.append(_dumps(flat))
+                base = f"_doc || ${idx}::jsonb"
+                # Chain nested jsonb_set calls on top of the flat merge
+                for np in nested_parts:
+                    base = np.replace("_doc", f"({base})", 1)
+                parts.append(f"_doc = {base}")
+            elif nested_parts:
+                base = nested_parts[0]
+                for np in nested_parts[1:]:
+                    base = np.replace("_doc", f"({base})", 1)
+                parts.append(f"_doc = {base}")
         elif op == "$unset":
             for key in (fields if isinstance(fields, list) else fields.keys()):
                 parts.append(f"_doc = _doc - '{key}'")
