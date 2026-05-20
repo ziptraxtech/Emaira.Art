@@ -349,14 +349,14 @@ const ArchitectsDashboard = () => {
                               <img
                                 src={thumbSrc}
                                 alt={insp.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
                                 onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "block"; }}
                               />
                             ) : null}
                             <img
                               src={fallback}
                               alt=""
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
                               style={{ display: thumbSrc ? "none" : "block" }}
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-[#080d1c]/80 via-transparent to-transparent" />
