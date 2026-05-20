@@ -65,7 +65,6 @@ const ArchitectsDashboard = () => {
   const [projects, setProjects] = useState([]);
   const [inspections, setInspections] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [failedKeyframes, setFailedKeyframes] = useState(new Set());
 
   // Project dialog
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
@@ -335,11 +334,6 @@ const ArchitectsDashboard = () => {
                     {items.map((insp) => {
                       const type = INSPECTION_TYPES.find((t) => t.value === insp.inspection_type) || INSPECTION_TYPES[0];
                       const TypeIcon = type.icon;
-                      const hasFailed = failedKeyframes.has(insp.inspection_id);
-                      const hasKeyframe = (insp.keyframe_count || 0) > 0;
-                      const thumbSrc = hasKeyframe && !hasFailed
-                        ? `${API}/architects/inspections/${insp.inspection_id}/keyframe/0`
-                        : null;
                       const fallback = FALLBACK_PHOTOS[inspections.indexOf(insp) % FALLBACK_PHOTOS.length];
                       return (
                         <Link
@@ -350,20 +344,11 @@ const ArchitectsDashboard = () => {
                         >
                           {/* Thumbnail */}
                           <div className="relative h-56 bg-[#0d0d0d] overflow-hidden">
-                            {thumbSrc ? (
-                              <img
-                                src={thumbSrc}
-                                alt={insp.title}
-                                className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
-                                onError={() => setFailedKeyframes(s => new Set([...s, insp.inspection_id]))}
-                              />
-                            ) : (
-                              <img
-                                src={fallback}
-                                alt=""
-                                className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
-                              />
-                            )}
+                            <img
+                              src={fallback}
+                              alt=""
+                              className="w-full h-full object-cover object-top group-hover:scale-105 transition-transform duration-300"
+                            />
                             <div className="absolute inset-0 bg-gradient-to-t from-[#080d1c]/80 via-transparent to-transparent" />
                             <div className="absolute top-3 left-3 right-3 flex items-start justify-between">
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium backdrop-blur-sm bg-black/40 border border-white/10 ${type.color}`}>
