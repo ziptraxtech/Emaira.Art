@@ -273,10 +273,21 @@ const ArchitectsDashboard = () => {
           </div>
         </div>
 
-        {/* Inspections list */}
-        <h2 className="font-display text-2xl mb-4">Recent Inspections</h2>
+        {/* Inspections grid */}
+        <h2 className="font-display text-2xl mb-5">Recent Inspections</h2>
         {loading ? (
-          <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="skeleton-dark h-20 rounded-lg" />)}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="card-obsidian rounded-2xl overflow-hidden">
+                <div className="skeleton-dark h-44" />
+                <div className="p-4 space-y-2">
+                  <div className="skeleton-dark h-4 w-3/4 rounded" />
+                  <div className="skeleton-dark h-3 w-1/2 rounded" />
+                  <div className="skeleton-dark h-3 w-full rounded mt-3" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : inspections.length === 0 ? (
           <div className="card-obsidian rounded-xl p-12 text-center">
             <Video className="w-10 h-10 mx-auto text-[#444] mb-3" />
@@ -286,55 +297,107 @@ const ArchitectsDashboard = () => {
             </Button>
           </div>
         ) : (
-          <div className="grid gap-3">
-            {inspections.map((i) => {
-              const type = INSPECTION_TYPES.find((t) => t.value === i.inspection_type) || INSPECTION_TYPES[0];
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            {inspections.map((insp) => {
+              const type = INSPECTION_TYPES.find((t) => t.value === insp.inspection_type) || INSPECTION_TYPES[0];
               const TypeIcon = type.icon;
-              const project = projects.find((p) => p.project_id === i.project_id);
+              const project = projects.find((p) => p.project_id === insp.project_id);
+              const thumbSrc = insp.status !== "uploaded" ? `${API}/architects/inspections/${insp.inspection_id}/keyframe` : null;
+              const totalFindings = (insp.defects_count || 0) + (insp.safety_violations_count || 0) + (insp.design_deviations_count || 0);
               return (
                 <Link
-                  key={i.inspection_id}
-                  to={`/architects/inspection/${i.inspection_id}`}
-                  data-testid={`architects-inspection-card-${i.inspection_id}`}
-                  className="card-obsidian rounded-xl p-4 sm:p-5 flex items-center gap-3 sm:gap-4 hover:border-[#D4AF37]/50 border border-transparent transition-colors"
+                  key={insp.inspection_id}
+                  to={`/architects/inspection/${insp.inspection_id}`}
+                  data-testid={`architects-inspection-card-${insp.inspection_id}`}
+                  className="group card-obsidian rounded-2xl overflow-hidden border border-transparent hover:border-[#D4AF37]/40 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#D4AF37]/5"
                 >
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
-                    <TypeIcon className={`w-5 h-5 sm:w-6 sm:h-6 ${type.color}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                      <h3 className="font-medium truncate text-sm sm:text-base">{i.title}</h3>
-                      {i.status === "completed" ? (
-                        <Badge className="bg-emerald-900/30 text-emerald-400 border-emerald-900/50 text-[10px]"><CheckCircle2 className="w-3 h-3 mr-1" />Done</Badge>
-                      ) : i.status === "analyzing" ? (
-                        <Badge className="bg-sky-900/30 text-sky-300 border-sky-900/50 text-[10px]"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Analyzing</Badge>
-                      ) : i.status === "failed" ? (
-                        <Badge className="bg-rose-900/30 text-rose-300 border-rose-900/50 text-[10px]">Failed</Badge>
+                  {/* Thumbnail */}
+                  <div className="relative h-44 bg-[#0d0d0d] overflow-hidden">
+                    {thumbSrc ? (
+                      <img
+                        src={thumbSrc}
+                        alt={insp.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "flex"; }}
+                      />
+                    ) : null}
+                    {/* Fallback icon */}
+                    <div
+                      className="absolute inset-0 flex items-center justify-center"
+                      style={{ display: thumbSrc ? "none" : "flex" }}
+                    >
+                      <TypeIcon className={`w-12 h-12 opacity-20 ${type.color}`} />
+                    </div>
+                    {/* Gradient overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#080d1c]/80 via-transparent to-transparent" />
+                    {/* Top badges */}
+                    <div className="absolute top-3 left-3 right-3 flex items-start justify-between">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium backdrop-blur-sm bg-black/40 border border-white/10 ${type.color}`}>
+                        <TypeIcon className="w-3 h-3" />
+                        {type.label.split(" (")[0]}
+                      </span>
+                      {insp.status === "completed" ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] backdrop-blur-sm bg-emerald-900/60 text-emerald-300 border border-emerald-800/50">
+                          <CheckCircle2 className="w-3 h-3" />Done
+                        </span>
+                      ) : insp.status === "analyzing" ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] backdrop-blur-sm bg-sky-900/60 text-sky-300 border border-sky-800/50">
+                          <Loader2 className="w-3 h-3 animate-spin" />Analyzing
+                        </span>
+                      ) : insp.status === "failed" ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] backdrop-blur-sm bg-rose-900/60 text-rose-300 border border-rose-800/50">
+                          Failed
+                        </span>
                       ) : (
-                        <Badge className="bg-[#222] text-[#A8A8A0] border-[#333] text-[10px]"><Clock className="w-3 h-3 mr-1" />Uploaded</Badge>
-                      )}
-                      {i.overall_risk_level && (
-                        <Badge className={`text-[10px] ${RISK_BADGE[i.overall_risk_level] || RISK_BADGE.low}`}>
-                          {i.overall_risk_level}
-                        </Badge>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] backdrop-blur-sm bg-black/40 text-[#A8A8A0] border border-white/10">
+                          <Clock className="w-3 h-3" />Uploaded
+                        </span>
                       )}
                     </div>
-                    <p className="text-[10px] sm:text-xs text-[#666660] truncate">
-                      {project?.name || "—"} · {type.label} · {(i.video_size_bytes / 1_048_576).toFixed(1)} MB
+                    {/* Play button */}
+                    <div className="absolute bottom-3 right-3 w-8 h-8 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Play className="w-3.5 h-3.5 text-[#D4AF37] ml-0.5" />
+                    </div>
+                  </div>
+
+                  {/* Card body */}
+                  <div className="p-4">
+                    <h3 className="font-medium text-sm sm:text-base leading-snug mb-1 line-clamp-2 group-hover:text-[#D4AF37] transition-colors">
+                      {insp.title}
+                    </h3>
+                    <p className="text-[11px] text-[#666660] mb-3 truncate">
+                      {project?.name || "—"}{project?.location ? ` · ${project.location}` : ""}
                     </p>
-                    {/* Mobile-only finding counters (otherwise shown to the right) */}
-                    <div className="md:hidden flex items-center gap-3 mt-1.5 text-[10px] text-[#A8A8A0]">
-                      <span><span className="text-rose-400 font-mono">{i.defects_count || 0}</span> defect</span>
-                      <span><span className="text-amber-400 font-mono">{i.safety_violations_count || 0}</span> safety</span>
-                      <span><span className="text-sky-300 font-mono">{i.design_deviations_count || 0}</span> design</span>
+
+                    {/* Stats row */}
+                    <div className="flex items-center gap-0 border-t border-[#1a1a1a] pt-3">
+                      <div className="flex-1 text-center">
+                        <div className="text-sm font-mono font-semibold text-rose-400">{insp.defects_count || 0}</div>
+                        <div className="text-[10px] text-[#666660] mt-0.5">Defects</div>
+                      </div>
+                      <div className="w-px h-8 bg-[#1a1a1a]" />
+                      <div className="flex-1 text-center">
+                        <div className="text-sm font-mono font-semibold text-amber-400">{insp.safety_violations_count || 0}</div>
+                        <div className="text-[10px] text-[#666660] mt-0.5">Safety</div>
+                      </div>
+                      <div className="w-px h-8 bg-[#1a1a1a]" />
+                      <div className="flex-1 text-center">
+                        <div className="text-sm font-mono font-semibold text-sky-400">{insp.design_deviations_count || 0}</div>
+                        <div className="text-[10px] text-[#666660] mt-0.5">Design</div>
+                      </div>
+                      {insp.overall_risk_level && (
+                        <>
+                          <div className="w-px h-8 bg-[#1a1a1a]" />
+                          <div className="flex-1 text-center">
+                            <div className={`text-[10px] font-semibold uppercase tracking-wide mt-1 ${RISK_BADGE[insp.overall_risk_level]?.split(" ")[1] || "text-emerald-400"}`}>
+                              {insp.overall_risk_level}
+                            </div>
+                            <div className="text-[10px] text-[#666660] mt-0.5">Risk</div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
-                  <div className="hidden md:flex items-center gap-4 text-xs text-[#A8A8A0]">
-                    <span><span className="text-rose-400 font-mono">{i.defects_count || 0}</span> defect</span>
-                    <span><span className="text-amber-400 font-mono">{i.safety_violations_count || 0}</span> safety</span>
-                    <span><span className="text-sky-300 font-mono">{i.design_deviations_count || 0}</span> design</span>
-                  </div>
-                  <Play className="w-4 h-4 text-[#666] flex-shrink-0" />
                 </Link>
               );
             })}
