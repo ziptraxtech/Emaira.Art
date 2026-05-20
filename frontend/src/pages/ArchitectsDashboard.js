@@ -344,7 +344,7 @@ const ArchitectsDashboard = () => {
                           className="group card-obsidian rounded-2xl overflow-hidden border border-transparent hover:border-[#D4AF37]/40 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#D4AF37]/5"
                         >
                           {/* Thumbnail */}
-                          <div className="relative h-44 bg-[#0d0d0d] overflow-hidden">
+                          <div className="relative h-56 bg-[#0d0d0d] overflow-hidden">
                             {thumbSrc ? (
                               <img
                                 src={thumbSrc}
