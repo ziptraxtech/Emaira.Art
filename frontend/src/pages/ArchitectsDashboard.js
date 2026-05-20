@@ -42,7 +42,6 @@ import {
 import { toast } from "sonner";
 
 const FALLBACK_PHOTOS = ["/insp1.jpg", "/insp2.jpg", "/insp3.jpg", "/insp4.jpg"];
-const fallbackPhoto = (id) => FALLBACK_PHOTOS[(id || "").split("").reduce((s, c) => s + c.charCodeAt(0), 0) % FALLBACK_PHOTOS.length];
 
 const INSPECTION_TYPES = [
   { value: "defect_detection", label: "Defect Detection", icon: Camera, color: "text-rose-400" },
@@ -336,7 +335,7 @@ const ArchitectsDashboard = () => {
                       const type = INSPECTION_TYPES.find((t) => t.value === insp.inspection_type) || INSPECTION_TYPES[0];
                       const TypeIcon = type.icon;
                       const thumbSrc = insp.status !== "uploaded" ? `${API}/architects/inspections/${insp.inspection_id}/keyframe` : null;
-                      const fallback = fallbackPhoto(insp.inspection_id);
+                      const fallback = FALLBACK_PHOTOS[inspections.indexOf(insp) % FALLBACK_PHOTOS.length];
                       return (
                         <Link
                           key={insp.inspection_id}
