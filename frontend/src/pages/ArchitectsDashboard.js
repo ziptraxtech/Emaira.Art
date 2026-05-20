@@ -41,6 +41,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+const FALLBACK_PHOTOS = ["/insp1.jpg", "/insp2.jpg", "/insp3.jpg", "/insp4.jpg"];
+const fallbackPhoto = (id) => FALLBACK_PHOTOS[(id || "").split("").reduce((s, c) => s + c.charCodeAt(0), 0) % FALLBACK_PHOTOS.length];
+
 const INSPECTION_TYPES = [
   { value: "defect_detection", label: "Defect Detection", icon: Camera, color: "text-rose-400" },
   { value: "safety_monitoring", label: "Safety Monitoring (PPE)", icon: HardHat, color: "text-amber-400" },
@@ -333,6 +336,7 @@ const ArchitectsDashboard = () => {
                       const type = INSPECTION_TYPES.find((t) => t.value === insp.inspection_type) || INSPECTION_TYPES[0];
                       const TypeIcon = type.icon;
                       const thumbSrc = insp.status !== "uploaded" ? `${API}/architects/inspections/${insp.inspection_id}/keyframe` : null;
+                      const fallback = fallbackPhoto(insp.inspection_id);
                       return (
                         <Link
                           key={insp.inspection_id}
@@ -347,12 +351,15 @@ const ArchitectsDashboard = () => {
                                 src={thumbSrc}
                                 alt={insp.title}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "flex"; }}
+                                onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "block"; }}
                               />
                             ) : null}
-                            <div className="absolute inset-0 flex items-center justify-center" style={{ display: thumbSrc ? "none" : "flex" }}>
-                              <TypeIcon className={`w-12 h-12 opacity-20 ${type.color}`} />
-                            </div>
+                            <img
+                              src={fallback}
+                              alt=""
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              style={{ display: thumbSrc ? "none" : "block" }}
+                            />
                             <div className="absolute inset-0 bg-gradient-to-t from-[#080d1c]/80 via-transparent to-transparent" />
                             <div className="absolute top-3 left-3 right-3 flex items-start justify-between">
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium backdrop-blur-sm bg-black/40 border border-white/10 ${type.color}`}>
