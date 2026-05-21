@@ -33,37 +33,38 @@ SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 # Met Museum API configuration
 MET_MUSEUM_API_BASE = os.environ.get('MET_MUSEUM_API_BASE', 'https://collectionapi.metmuseum.org/public/collection/v1')
 
-# Clerk JWT verification
-CLERK_JWKS_URL = os.environ.get('CLERK_JWKS_URL', 'https://special-perch-53.clerk.accounts.dev/.well-known/jwks.json')
-_clerk_jwks_cache = None
+# Clerk JWT verification — per-issuer JWKS cache keyed by issuer URL
+_clerk_jwks_cache: dict = {}
 
-async def _get_clerk_jwks():
-    global _clerk_jwks_cache
-    if _clerk_jwks_cache:
-        return _clerk_jwks_cache
+async def _get_clerk_jwks(issuer: str) -> dict:
+    if issuer in _clerk_jwks_cache:
+        return _clerk_jwks_cache[issuer]
+    jwks_url = f"{issuer.rstrip('/')}/.well-known/jwks.json"
     async with httpx.AsyncClient() as c:
-        resp = await c.get(CLERK_JWKS_URL, timeout=10)
-        _clerk_jwks_cache = resp.json()
-    return _clerk_jwks_cache
+        resp = await c.get(jwks_url, timeout=10)
+        _clerk_jwks_cache[issuer] = resp.json()
+    return _clerk_jwks_cache[issuer]
 
 async def verify_clerk_jwt(token: str) -> Optional[dict]:
     try:
         from jose import jwt as jose_jwt
-        jwks = await _get_clerk_jwks()
+        # Decode payload without verification to get issuer
+        unverified = jose_jwt.get_unverified_claims(token)
+        issuer = unverified.get("iss", "")
+        if not issuer:
+            logging.warning("[clerk_jwt] no iss claim in token")
+            return None
+        jwks = await _get_clerk_jwks(issuer)
         header = jose_jwt.get_unverified_header(token)
         jwt_kid = header.get("kid")
-        jwks_kids = [k.get("kid") for k in jwks.get("keys", [])]
-        logging.warning(f"[clerk_jwt] jwt_kid={jwt_kid!r} jwks_kids={jwks_kids!r}")
         key = next((k for k in jwks.get("keys", []) if k.get("kid") == jwt_kid), None)
         if not key:
-            logging.warning(f"[clerk_jwt] kid not found in JWKS — returning None")
+            logging.warning(f"[clerk_jwt] kid {jwt_kid!r} not in JWKS for {issuer!r}")
             return None
-        result = jose_jwt.decode(
+        return jose_jwt.decode(
             token, key, algorithms=["RS256"],
             options={"verify_aud": False, "verify_at_hash": False},
         )
-        logging.warning(f"[clerk_jwt] decode success sub={result.get('sub')!r}")
-        return result
     except Exception as e:
         logging.warning(f"[clerk_jwt] exception: {type(e).__name__}: {e}")
         return None
