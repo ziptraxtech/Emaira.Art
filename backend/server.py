@@ -34,7 +34,7 @@ SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 MET_MUSEUM_API_BASE = os.environ.get('MET_MUSEUM_API_BASE', 'https://collectionapi.metmuseum.org/public/collection/v1')
 
 # Clerk JWT verification
-CLERK_JWKS_URL = os.environ.get('CLERK_JWKS_URL', 'https://arriving-octopus-7.clerk.accounts.dev/.well-known/jwks.json')
+CLERK_JWKS_URL = os.environ.get('CLERK_JWKS_URL', 'https://special-perch-53.clerk.accounts.dev/.well-known/jwks.json')
 _clerk_jwks_cache = None
 
 async def _get_clerk_jwks():
