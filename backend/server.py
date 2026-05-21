@@ -51,14 +51,21 @@ async def verify_clerk_jwt(token: str) -> Optional[dict]:
         from jose import jwt as jose_jwt
         jwks = await _get_clerk_jwks()
         header = jose_jwt.get_unverified_header(token)
-        key = next((k for k in jwks.get("keys", []) if k.get("kid") == header.get("kid")), None)
+        jwt_kid = header.get("kid")
+        jwks_kids = [k.get("kid") for k in jwks.get("keys", [])]
+        logging.warning(f"[clerk_jwt] jwt_kid={jwt_kid!r} jwks_kids={jwks_kids!r}")
+        key = next((k for k in jwks.get("keys", []) if k.get("kid") == jwt_kid), None)
         if not key:
+            logging.warning(f"[clerk_jwt] kid not found in JWKS — returning None")
             return None
-        return jose_jwt.decode(
+        result = jose_jwt.decode(
             token, key, algorithms=["RS256"],
             options={"verify_aud": False, "verify_at_hash": False},
         )
-    except Exception:
+        logging.warning(f"[clerk_jwt] decode success sub={result.get('sub')!r}")
+        return result
+    except Exception as e:
+        logging.warning(f"[clerk_jwt] exception: {type(e).__name__}: {e}")
         return None
 
 # Create the main app
