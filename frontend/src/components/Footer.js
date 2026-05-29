@@ -50,7 +50,7 @@ const Footer = ({ variant = "art" }) => {
   const homePath = isArchitects ? "/" : "/art";
   const brandLabel = isArchitects ? "Emaira.Architects" : "Emaira.Art";
   const tagline = isArchitects
-    ? "AI-powered construction QC and QA — built for architects, contractors, and project owners."
+    ? "AI inspections using Computer Vision models for resale properties and construction sites — spot defects before you buy."
     : "Where art meets AI forensics — provenance, authentication, and the hidden stories within masterpieces.";
 
   return (
