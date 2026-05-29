@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import Footer from "@/components/Footer";
 import {
   Camera,
   HardHat,
@@ -321,9 +322,7 @@ const ArchitectsLanding = () => {
         </div>
       </section>
 
-      <footer className="py-10 border-t border-[#111] text-center text-xs text-[#555]">
-        © 2026 Emaira Labs · <Link to="/art" className="hover:text-[#D4AF37]">Explore Emaira.Art</Link>
-      </footer>
+      <Footer variant="architects" />
     </div>
   );
 };

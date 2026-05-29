@@ -42,6 +42,9 @@ import ArchitectsPricing from "@/pages/ArchitectsPricing";
 import ArchitectsDashboard from "@/pages/ArchitectsDashboard";
 import ArchitectsInspection from "@/pages/ArchitectsInspection";
 import ArchitectsSharedReport from "@/pages/ArchitectsSharedReport";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import RefundPolicy from "@/pages/RefundPolicy";
+import TermsOfUse from "@/pages/TermsOfUse";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || '';
 export const API = `${BACKEND_URL}/api`;
@@ -172,6 +175,9 @@ function AppRouter() {
       <Route path="/about" element={<AboutUs />} />
       <Route path="/technology" element={<OurTechnology />} />
       <Route path="/events" element={<Events />} />
+      <Route path="/legal/privacy" element={<PrivacyPolicy />} />
+      <Route path="/legal/refund" element={<RefundPolicy />} />
+      <Route path="/legal/terms" element={<TermsOfUse />} />
       <Route path="/payment/success" element={<PaymentSuccess />} />
       <Route
         path="/dashboard"

@@ -4,6 +4,7 @@ import { useAuth, API } from "@/App";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import Footer from "@/components/Footer";
 import {
   Building2,
   Check,
@@ -193,6 +194,7 @@ const ArchitectsPricing = () => {
           </div>
         </div>
       </div>
+      <Footer variant="architects" />
     </div>
   );
 };

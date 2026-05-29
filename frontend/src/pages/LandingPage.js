@@ -6,6 +6,7 @@ import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import LanguageSelector from "@/components/LanguageSelector";
+import Footer from "@/components/Footer";
 import { 
   Eye, 
   Fingerprint, 
@@ -381,27 +382,7 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-[#E8E8E0] py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded bg-gradient-to-br from-[#D4AF37] to-[#B8962F] flex items-center justify-center">
-                <span className="font-display text-white text-sm font-bold">E</span>
-              </div>
-              <span className="font-display text-lg text-[#1A1A18]">Emaira.Art</span>
-            </div>
-            <div className="flex items-center gap-6 text-sm text-[#4A4A45]">
-              <Link to="/gallery" className="hover:text-[#B8962F] transition-colors">Gallery</Link>
-              <Link to="/about" className="hover:text-[#B8962F] transition-colors">About</Link>
-              <Link to="/technology" className="hover:text-[#B8962F] transition-colors">Technology</Link>
-              <Link to="/events" className="hover:text-[#B8962F] transition-colors">Events</Link>
-              <Link to="/pricing" className="hover:text-[#B8962F] transition-colors">Pricing</Link>
-              <span>© 2026 Emaira.Art</span>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 };

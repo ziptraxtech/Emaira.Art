@@ -31,6 +31,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import RestorationTeaser from "@/components/RestorationTeaser";
+import Footer from "@/components/Footer";
 
 const FALLBACK_TIERS = [
   {
@@ -423,6 +424,7 @@ const Pricing = () => {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 };

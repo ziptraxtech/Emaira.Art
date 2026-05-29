@@ -5,6 +5,7 @@ import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import Footer from "@/components/Footer";
 import {
   Select,
   SelectContent,
@@ -254,6 +255,7 @@ const Gallery = () => {
           )}
         </div>
       </div>
+      <Footer />
     </div>
   );
 };
