@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 import httpx
 import _runtime as rt
+import gdrive_upload
 
 SEGMENTATION_URL = os.getenv(
     "SEGMENTATION_URL",
@@ -247,6 +248,27 @@ async def get_architects_project(project_id: str, request: Request):
     return {"project": project, "inspections": inspections}
 
 
+async def _mirror_to_gdrive(*, inspection_id: str, local_path: Path, user_label: str, project_label: str, filename: str) -> None:
+    """Background task: upload the local video to Google Drive and persist file_id on the inspection."""
+    if not local_path.exists():
+        return
+    file_id = await asyncio.to_thread(
+        gdrive_upload.upload_video_sync,
+        local_path,
+        user_label=user_label,
+        project_label=project_label,
+        filename=filename,
+    )
+    if file_id:
+        try:
+            await rt.db.architects_inspections.update_one(
+                {"inspection_id": inspection_id},
+                {"$set": {"gdrive_file_id": file_id}},
+            )
+        except Exception as exc:
+            rt.logger.warning("[gdrive] failed to persist file_id for %s: %s", inspection_id, exc)
+
+
 def _extract_keyframes(video_path: Path, out_dir: Path, inspection_id: str, max_frames: int = 6) -> Dict[str, Any]:
     """Use OpenCV to probe the video and save evenly-spaced keyframes.
     Returns {duration_sec, width, height, keyframe_count}.
@@ -432,6 +454,16 @@ async def finalize_inspection_upload(request: Request):
     await rt.log_activity(user.user_id, "architects_inspection_upload", {
         "inspection_id": inspection_id, "size_mb": round(size / 1_048_576, 2)
     })
+
+    if not is_image:
+        asyncio.create_task(_mirror_to_gdrive(
+            inspection_id=inspection_id,
+            local_path=video_path,
+            user_label=(user.email or user.user_id),
+            project_label=project.get("name") or project_id,
+            filename=f"{inspection_id}_{title}{suffix}",
+        ))
+
     await rt.db.architects_inspections.update_one(
         {"inspection_id": inspection_id},
         {"$set": {
