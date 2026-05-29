@@ -1,12 +1,14 @@
-"""Mirror inspection videos to a Google Shared Drive for ML training archive.
+"""Mirror inspection videos to Google Drive for ML training archive.
 
 Runs asynchronously after the S3 upload completes so failures here never block
 the inspection pipeline. Credentials come from env vars set in the ECS task:
 
 - GDRIVE_SERVICE_ACCOUNT_JSON: full JSON content of the service account key
-- GDRIVE_SHARED_DRIVE_ID: the Shared Drive ID
+- GDRIVE_SHARED_DRIVE_ID: ID of the parent — either a true Shared Drive ID or a
+  regular folder ID inside someone's My Drive. The service account must have at
+  least Editor access on that folder/drive.
 
-If either is missing, uploads are silently skipped (feature is opt-in).
+If either env var is missing, uploads are silently skipped (feature is opt-in).
 """
 
 from __future__ import annotations
@@ -45,8 +47,9 @@ def _get_service():
         return None
 
 
-def _get_or_create_folder(svc, name: str, parent_id: str, drive_id: str) -> Optional[str]:
-    """Look up a folder by name under parent_id within the Shared Drive, creating it if missing."""
+def _get_or_create_folder(svc, name: str, parent_id: str) -> Optional[str]:
+    """Look up a folder by name under parent_id, creating it if missing.
+    Works for both Shared Drive subfolders and regular My Drive folders."""
     cache_key = f"{parent_id}/{name}"
     if cache_key in _folder_cache:
         return _folder_cache[cache_key]
@@ -58,8 +61,7 @@ def _get_or_create_folder(svc, name: str, parent_id: str, drive_id: str) -> Opti
     )
     resp = svc.files().list(
         q=query,
-        corpora="drive",
-        driveId=drive_id,
+        corpora="allDrives",
         includeItemsFromAllDrives=True,
         supportsAllDrives=True,
         fields="files(id, name)",
@@ -99,16 +101,16 @@ def upload_video_sync(
     svc = _get_service()
     if svc is None:
         return None
-    drive_id = os.getenv("GDRIVE_SHARED_DRIVE_ID")
-    if not drive_id:
+    root_id = os.getenv("GDRIVE_SHARED_DRIVE_ID")
+    if not root_id:
         return None
     try:
         from googleapiclient.http import MediaFileUpload
 
-        user_folder = _get_or_create_folder(svc, user_label, drive_id, drive_id)
+        user_folder = _get_or_create_folder(svc, user_label, root_id)
         if not user_folder:
             return None
-        project_folder = _get_or_create_folder(svc, project_label, user_folder, drive_id)
+        project_folder = _get_or_create_folder(svc, project_label, user_folder)
         if not project_folder:
             return None
 
