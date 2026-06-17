@@ -1,4 +1,4 @@
-const ALB = 'http://defect-alb-1564603409.ap-south-1.elb.amazonaws.com';
+const ALB = 'http://defect-alb-2104202651.ap-south-1.elb.amazonaws.com';
 
 module.exports = async function handler(req, res) {
   const url = new URL(req.url, 'http://x');
